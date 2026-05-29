@@ -20,7 +20,7 @@ export async function POST(
 
     const { data: meeting, error: fetchError } = await supabase
       .from("meetings")
-      .select("*, meeting_templates(ai_prompt_context)")
+      .select("*")
       .eq("id", id)
       .single();
 
@@ -36,8 +36,7 @@ export async function POST(
       return NextResponse.json({ ok: true, alreadyAnalyzed: true });
     }
 
-    const templateContext = meeting.meeting_templates?.ai_prompt_context;
-    const result = await processMeetingWithAI(meeting.raw_transcript || "", templateContext);
+    const result = await processMeetingWithAI(meeting.raw_transcript || "");
 
     const { error: updateError } = await supabase
       .from("meetings")

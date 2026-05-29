@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import type { MeetingTemplate } from "@/lib/templates";
+import { useState } from "react";
+import { DEFAULT_TEMPLATES, type MeetingTemplate } from "@/lib/templates";
 
 interface TemplateSelectorProps {
   selectedTemplate: string | null;
@@ -9,17 +9,7 @@ interface TemplateSelectorProps {
 }
 
 export default function TemplateSelector({ selectedTemplate, onSelect }: TemplateSelectorProps) {
-  const [templates, setTemplates] = useState<MeetingTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/templates")
-      .then((res) => res.json())
-      .then((data) => { setTemplates(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  if (loading) return null;
+  const templates: MeetingTemplate[] = DEFAULT_TEMPLATES;
 
   return (
     <div className="mb-6">

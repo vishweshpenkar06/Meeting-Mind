@@ -4,6 +4,7 @@ import { transcribeAudio } from "@/lib/transcription";
 import crypto from "crypto";
 import { embed } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { getTemplate } from "@/lib/templates";
 
 export async function GET(request: Request) {
   try {
@@ -175,17 +176,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch template context if template provided
-    let templateContext: string | undefined;
-    if (templateName) {
-      const { data: templates } = await supabase
-        .from("meeting_templates")
-        .select("ai_prompt_context")
-        .eq("user_id", user.id)
-        .eq("name", templateName)
-        .single();
-      templateContext = templates?.ai_prompt_context;
-    }
+    // Fetch template context from built-in defaults only
+    const templateContext = getTemplate(templateName)?.aiPromptContext;
 
     // If a file is uploaded but no transcript exists, transcribe the file directly
     let effectiveTranscript = transcript;

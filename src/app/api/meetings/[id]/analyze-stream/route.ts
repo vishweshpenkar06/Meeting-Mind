@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { streamObject, embed } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
+import { getTemplate } from "@/lib/templates";
 
 const MeetingSchema = z.object({
   title: z.string().describe("A meeting title (5 words max)"),
@@ -44,10 +45,10 @@ export async function POST(
     const resolvedParams = await params;
     const { id } = resolvedParams;
 
-    // Fetch meeting and template context
+    // Fetch meeting directly; template hints come from local defaults if needed
     const { data: meeting, error: fetchError } = await supabase
       .from("meetings")
-      .select("*, meeting_templates(ai_prompt_context)")
+      .select("*")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
@@ -60,7 +61,7 @@ export async function POST(
       return new Response("Meeting already analyzed", { status: 400 });
     }
 
-    const templateContext = meeting.meeting_templates?.ai_prompt_context;
+    const templateContext = getTemplate((meeting as { template_name?: string | null }).template_name || undefined)?.aiPromptContext;
     const fullSystemPrompt = templateContext 
       ? `${templateContext}\n\n${SYSTEM_PROMPT}` 
       : SYSTEM_PROMPT;

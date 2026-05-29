@@ -10,23 +10,26 @@ interface ProviderConfig {
   model: string;
 }
 
-const SYSTEM_PROMPT = `You are an expert meeting analyst. Extract structured, actionable insights from meeting transcripts. Always return valid JSON matching the specified schema. Be precise and concise — never invent information not present in the transcript.
+const SYSTEM_PROMPT = `You are an elite Technical Program Manager and Systems Engineer analyzing chaotic, jargon-dense meeting transcripts.
 
-For action item due dates, use these rules:
-- If a specific date is mentioned, return it in ISO format (YYYY-MM-DD)
-- If a relative day is mentioned ("tomorrow", "next Friday"), return the most logical date
-- If no deadline is mentioned, return null
-- If the date is ambiguous, return null
+Your objective is to synthesize precise, highly accurate technical documentation, architectural root causes, and explicit action items.
 
-For owner names:
-- Use the person's actual name from the transcript
-- If no owner is mentioned, use "Unassigned"`;
+Processing rules:
+- Resolve ambiguous pronouns to the exact systems, incidents, commits, services, or infrastructure assets being discussed.
+- Build a chronological causal chain. Prefer linear root-cause analysis over disjoint bug lists.
+- Extract strategic decisions as state changes. Capture rejected paths and approved paths when they are explicitly discussed.
+- Do not invent facts, owners, systems, metrics, or deadlines.
+- Keep hardcoded technical metrics, timestamps, status codes, names, and configuration values accurate.
+- Do not extract passive descriptions or warnings as tasks.
+- Do not create unassigned action items. If a task is critical but no owner is explicitly stated, label the owner as "Unassigned Backlog".
+
+Return valid JSON matching the required schema. The summary should be written like technical notes with root-cause detail, and the decisions array should capture approved/rejected paths when mentioned.`;
 
 const USER_PROMPT = `Analyze this meeting transcript and extract:
 1. A meeting title (5 words max)
-2. A concise summary (3-5 sentences, key themes only)
-3. Key decisions made (array of strings — bullet points)
-4. Action items: each with owner (person's name or "Unassigned"), task (clear description), and dueDate (ISO date string or null)
+2. A concise technical summary (3-5 sentences) with causal chain and root cause where applicable
+3. Key decisions made, including rejected paths and approved paths when present
+4. Action items: each with owner, task, and dueDate (ISO date string or null)
 
 Return ONLY valid JSON in this format:
 {
@@ -37,6 +40,11 @@ Return ONLY valid JSON in this format:
     { "owner": "string", "task": "string", "dueDate": "string or null" }
   ]
 }
+
+Rules for action items:
+- If a due date is explicitly mentioned, convert it to ISO format (YYYY-MM-DD) when possible.
+- If no due date is mentioned, return null.
+- If no owner is explicitly stated, use "Unassigned Backlog".
 
 No markdown, no explanation, no code blocks. Just the raw JSON.
 
@@ -104,7 +112,7 @@ function generateFallbackMeetingResult(transcript: string): AIMeetingResult {
     .slice(0, 5);
 
   const actionItems = actionCandidates.slice(0, 5).map((sentence) => ({
-    owner: "Unassigned",
+    owner: "Unassigned Backlog",
     task: sentence.replace(/^[-*\d.\s]+/, "").trim(),
     dueDate: null,
   }));
@@ -115,7 +123,7 @@ function generateFallbackMeetingResult(transcript: string): AIMeetingResult {
     decisions: decisions.length > 0 ? decisions : ["No explicit decisions detected in the transcript."],
     actionItems: actionItems.length > 0 ? actionItems : [
       {
-        owner: "Unassigned",
+        owner: "Unassigned Backlog",
         task: "Review transcript and extract concrete follow-up tasks.",
         dueDate: null,
       },

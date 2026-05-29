@@ -32,6 +32,7 @@ export default function NewMeetingPage() {
   const [processingStep, setProcessingStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<"upload" | "paste">("paste");
+  const [uploadKind, setUploadKind] = useState<"audio" | "screen">("audio");
   const [isRecording, setIsRecording] = useState(false);
   const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
   const [user, setUser] = useState<{ id: string } | null>(null);
@@ -58,6 +59,8 @@ export default function NewMeetingPage() {
   const checkValid = () => {
     return (selectedFile || transcript.length > 100) && !isProcessing;
   };
+
+  const maxUploadBytes = uploadKind === "screen" ? 100 * 1024 * 1024 : 25 * 1024 * 1024;
 
   const handleProcess = async () => {
     if (!checkValid()) return;
@@ -105,8 +108,8 @@ export default function NewMeetingPage() {
   };
 
   const handleFileSelect = (file: File) => {
-    if (file.size > 25 * 1024 * 1024) {
-      alert("File too large. Maximum size is 25MB.");
+    if (file.size > maxUploadBytes) {
+      alert(`File too large. Maximum size is ${uploadKind === "screen" ? "100MB" : "25MB"}.`);
       return;
     }
     setSelectedFile(file);
@@ -284,9 +287,9 @@ export default function NewMeetingPage() {
           Paste Transcript
         </button>
         <button
-          onClick={() => { if (!fileName) setInputMode("upload"); }}
+          onClick={() => { if (!fileName) { setUploadKind("audio"); setInputMode("upload"); } }}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            inputMode === "upload"
+            inputMode === "upload" && uploadKind === "audio"
               ? "bg-accent-primary text-white"
               : "text-text-secondary hover:text-text-primary"
           }`}
@@ -294,6 +297,18 @@ export default function NewMeetingPage() {
         >
           <FileAudio className="w-3.5 h-3.5" />
           Upload Audio
+        </button>
+        <button
+          onClick={() => { if (!fileName) { setUploadKind("screen"); setInputMode("upload"); } }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            inputMode === "upload" && uploadKind === "screen"
+              ? "bg-accent-primary text-white"
+              : "text-text-secondary hover:text-text-primary"
+          }`}
+          disabled={!!fileName}
+        >
+          <Zap className="w-3.5 h-3.5" />
+          Screen Recording
         </button>
       </div>
 
@@ -312,13 +327,15 @@ export default function NewMeetingPage() {
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <input ref={fileInputRef} type="file" className="hidden" accept=".mp3,.mp4,.wav,.m4a,.webm,.ogg,.mpeg,.mov,audio/*,video/*" onChange={handleInputChange} />
+          <input ref={fileInputRef} type="file" className="hidden" accept={uploadKind === "screen" ? ".mp4,.mov,.webm,.m4v,video/*" : ".mp3,.wav,.m4a,.webm,.ogg,audio/*"} onChange={handleInputChange} />
           <Upload className="w-7 h-7 text-accent-primary mx-auto mb-4" />
           <p className="text-text-primary font-semibold text-[15px] mb-1">
-            Drop your meeting recording here
+            Drop your {uploadKind === "screen" ? "screen recording video" : "meeting recording"} here
           </p>
           <p className="text-text-muted text-sm mb-4">
-            .mp3, .mp4, .wav, .m4a, .webm, .ogg · Maximum 25MB
+            {uploadKind === "screen"
+              ? ".mp4, .mov, .webm, .m4v · Maximum 100MB"
+              : ".mp3, .wav, .m4a, .webm, .ogg · Maximum 25MB"}
           </p>
           <span className="text-accent-primary text-sm font-medium underline underline-offset-4 hover:text-accent-primary-hover transition-colors">
             Browse files
