@@ -16,12 +16,11 @@ export async function POST(request: Request) {
 
     const template = getTemplate(templateName);
 
-    // Fetch past meetings of the same type
+    // Fetch past meetings for context without relying on a type column
     const { data: recentMeetings } = await supabase
       .from("meetings")
       .select("title, summary, action_items(task_description, is_completed, due_date)")
       .eq("user_id", user.id)
-      .eq("meeting_type", templateName || "general")
       .order("created_at", { ascending: false })
       .limit(3);
 

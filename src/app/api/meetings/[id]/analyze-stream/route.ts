@@ -56,7 +56,7 @@ export async function POST(
       return new Response("Meeting not found", { status: 404 });
     }
 
-    if (meeting.analysis_status === "completed" && meeting.summary) {
+    if (meeting.summary) {
       return new Response("Meeting already analyzed", { status: 400 });
     }
 
@@ -81,7 +81,6 @@ export async function POST(
           .update({
             title: aiTitle,
             summary: object.summary,
-            analysis_status: "completed",
           })
           .eq("id", id);
 

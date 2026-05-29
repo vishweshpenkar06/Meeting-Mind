@@ -18,21 +18,6 @@ import {
   EyeOff,
 } from "lucide-react";
 import { exportToPDF, downloadAsText } from "@/lib/exports";
-import { experimental_useObject as useObject } from "@ai-sdk/react";
-import { z } from "zod";
-
-const MeetingSchema = z.object({
-  title: z.string(),
-  summary: z.string(),
-  decisions: z.array(z.string()),
-  actionItems: z.array(
-    z.object({
-      owner: z.string(),
-      task: z.string(),
-      dueDate: z.string().nullable(),
-    })
-  ),
-});
 
 interface ActionItem {
   id: string;
@@ -56,7 +41,6 @@ interface Meeting {
   is_public: boolean;
   action_items: ActionItem[];
   key_decisions: KeyDecision[];
-  analysis_status?: string;
 }
 
 export default function MeetingPage() {
@@ -73,15 +57,9 @@ export default function MeetingPage() {
   const [titleValue, setTitleValue] = useState("");
   const [exporting, setExporting] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
-
-  const { submit, object: partialMeeting, isLoading: isStreaming } = useObject({
-    api: `/api/meetings/${params.id}/analyze-stream`,
-    schema: MeetingSchema,
-    onFinish: () => {
-      // Refresh to get finalized data with real DB IDs
-      fetchMeeting();
-    }
-  });
+  const [requestedAnalysis, setRequestedAnalysis] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const fetchMeeting = useCallback(async () => {
     try {
@@ -107,10 +85,27 @@ export default function MeetingPage() {
   }, [fetchMeeting]);
 
   useEffect(() => {
-    if (meeting?.analysis_status === "processing" && !isStreaming) {
-      submit({});
+    if (meeting && !meeting.summary && !requestedAnalysis) {
+      setRequestedAnalysis(true);
+      setIsAnalyzing(true);
+      fetch(`/api/meetings/${params.id}/analyze`, { method: "POST" })
+        .then(async (res) => {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || "Failed to analyze meeting");
+          }
+          setAnalysisError(null);
+          await fetchMeeting();
+        })
+        .catch((err) => {
+          console.error("Analyze request failed:", err);
+          setAnalysisError(err instanceof Error ? err.message : "Failed to analyze meeting");
+        })
+        .finally(() => {
+          setIsAnalyzing(false);
+        });
     }
-  }, [meeting?.analysis_status, isStreaming, submit]);
+  }, [meeting, params.id, requestedAnalysis, fetchMeeting]);
 
   const toggleItem = async (actionItemId: string) => {
     if (!meeting || toggling) return;
@@ -278,36 +273,15 @@ export default function MeetingPage() {
     );
   }
 
-  const isProcessing = meeting.analysis_status === "processing" || isStreaming;
-  
-  // Use streamed data if processing, otherwise use DB data
-  type PartialMeetingType = {
-    title?: string;
-    summary?: string;
-    actionItems?: { owner?: string; task?: string; dueDate?: string | null }[];
-    decisions?: string[];
-  };
-  const parsedMeeting = partialMeeting as PartialMeetingType | undefined;
-  const displayTitle = isProcessing ? parsedMeeting?.title || meeting.title : meeting.title;
-  const displaySummary = isProcessing ? parsedMeeting?.summary || "" : meeting.summary;
-  
-  // Map partial items to the same shape for rendering
-  const actionItems = isProcessing 
-    ? (parsedMeeting?.actionItems?.map((a: { owner?: string; task?: string; dueDate?: string | null } | undefined, i: number) => ({
-        id: `temp-${i}`,
-        owner_name: a?.owner || "Unassigned",
-        task_description: a?.task || "...",
-        due_date: a?.dueDate || null,
-        is_completed: false
-      })) || [])
-    : (meeting.action_items || []);
-    
-  const decisions = isProcessing
-    ? (parsedMeeting?.decisions?.map((d: string | undefined, i: number) => ({
-        id: `temp-${i}`,
-        decision_text: d || "..."
-      })) || [])
-    : (meeting.key_decisions || []);
+  if (analysisError) {
+    console.warn("Meeting analysis fallback or error:", analysisError);
+  }
+
+  const isProcessing = isAnalyzing;
+  const displayTitle = meeting.title;
+  const displaySummary = meeting.summary;
+  const actionItems = meeting.action_items || [];
+  const decisions = meeting.key_decisions || [];
 
   const completedCount = actionItems.filter((a: { is_completed?: boolean }) => a.is_completed).length;
   const progressPct = actionItems.length > 0 ? (completedCount / actionItems.length) * 100 : 0;
@@ -399,6 +373,12 @@ export default function MeetingPage() {
           </div>
         </div>
       </div>
+
+      {analysisError && (
+        <div className="mb-6 rounded-xl border border-warning/20 bg-warning-muted px-4 py-3 text-sm text-warning">
+          {analysisError}
+        </div>
+      )}
 
       {/* Rename Modal */}
       {editTitle && (

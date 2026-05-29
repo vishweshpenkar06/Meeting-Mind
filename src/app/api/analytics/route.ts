@@ -12,7 +12,7 @@ export async function GET() {
     // Overall stats
     const { data: meetings } = await supabase
       .from("meetings")
-      .select("id, duration_seconds, meeting_type, created_at")
+      .select("id, created_at")
       .eq("user_id", user.id);
 
     const { data: actionItems } = await supabase
@@ -32,7 +32,6 @@ export async function GET() {
       );
 
     const totalMeetings = meetings?.length ?? 0;
-    const totalDuration = meetings?.reduce((s, m) => s + (m.duration_seconds || 0), 0) ?? 0;
     const completedTasks = actionItems?.filter((a) => a.is_completed).length ?? 0;
     const totalTasks = actionItems?.length ?? 0;
     const avgCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -54,28 +53,20 @@ export async function GET() {
       const weekMeetings = (meetings || []).filter(
         (m) => new Date(m.created_at) >= start && new Date(m.created_at) < end
       );
-      const weekHours = weekMeetings.reduce((s, m) => s + (m.duration_seconds || 0), 0) / 3600;
       weeklyData.push({
         week: start.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         count: weekMeetings.length,
-        hours: Math.round(weekHours * 10) / 10,
+        hours: 0,
       });
     }
 
-    // Meeting type breakdown
-    const typeCounts: Record<string, number> = {};
-    (meetings || []).forEach((m) => {
-      const type = m.meeting_type || "general";
-      typeCounts[type] = (typeCounts[type] || 0) + 1;
-    });
-
     return NextResponse.json({
       totalMeetings,
-      totalMinutes: Math.round(totalDuration / 60),
+      totalMinutes: 0,
       avgCompletionRate,
       avgSentiment,
       weeklyData,
-      meetingTypes: typeCounts,
+      meetingTypes: { general: totalMeetings },
     });
   } catch (err) {
     console.error("Analytics error:", err);

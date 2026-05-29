@@ -107,20 +107,58 @@ export default function LiveMeetingPage() {
   const stopMeeting = async () => {
     if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
     setIsRecording(false);
+    // Wait for any in-flight transcription to finish (with timeout)
+    let waited = 0;
+    while (isProcessingRef.current && waited < 10000) {
+      // wait up to 10s
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 300));
+      waited += 300;
+    }
 
-    // Process remaining segments
-    for (const chunk of queueRef.current) {
+    // Flush remaining queue safely (copy then clear to avoid races)
+    const remaining = [...queueRef.current];
+    queueRef.current = [];
+
+    for (const chunk of remaining) {
       try {
         const formData = new FormData();
         formData.append("audio", new File([chunk], "segment.webm", { type: "audio/webm" }));
         if (meetingId) formData.append("meetingId", meetingId);
-        await fetch("/api/transcribe-segment", { method: "POST", body: formData });
-      } catch (_) {}
+        const res = await fetch("/api/transcribe-segment", { method: "POST", body: formData });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.text) {
+            const seg: TranscriptSegment = {
+              id: crypto.randomUUID(),
+              text: data.text,
+              timestamp: new Date(),
+            };
+            segmentsRef.current.push(seg);
+            setSegments([...segmentsRef.current]);
+          }
+        }
+      } catch (e) {
+        console.error("Flush segment error:", e);
+      }
     }
 
     const fullText = segmentsRef.current.map((s) => s.text).join(" ");
     if (fullText && meetingId) {
+      try {
+        await fetch(`/api/meetings/${meetingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ raw_transcript: fullText }),
+        });
+      } catch (err) {
+        console.error("Failed to update transcript:", err);
+      }
       router.push(`/meeting/${meetingId}`);
+    } else if (meetingId) {
+      // No transcript captured — navigate back to dashboard with error
+      setError("No transcript was captured. Please check your microphone and try again.");
+      router.push("/dashboard");
     }
   };
 

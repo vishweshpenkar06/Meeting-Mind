@@ -18,6 +18,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No audio provided" }, { status: 400 });
     }
 
+    // Require meetingId to ensure segments are associated
+    if (!meetingId) {
+      return NextResponse.json({ error: "meetingId is required" }, { status: 400 });
+    }
+
     // Upload segment to storage
     const ext = audio.name.split(".").pop() || "webm";
     const filePath = `${user.id}/${crypto.randomUUID()}.${ext}`;
@@ -26,10 +31,15 @@ export async function POST(request: Request) {
       .upload(filePath, audio);
     if (uploadError) throw new Error(uploadError.message);
 
-    const { data: { publicUrl } } = supabase.storage.from("meeting-audio").getPublicUrl(uploadData.path);
+    // Use a signed URL for private buckets
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from("meeting-audio")
+      .createSignedUrl(uploadData.path, 300);
+    if (signedError || !signedData?.signedUrl) throw new Error(signedError?.message || "Could not generate signed URL");
 
     // Download and transcribe with Whisper
-    const audioRes = await fetch(publicUrl);
+    const audioRes = await fetch(signedData.signedUrl);
+    if (!audioRes.ok) throw new Error(`Failed to fetch audio: ${audioRes.status}`);
     const audioBlob = await audioRes.blob();
     const audioFile = new File([audioBlob], `segment.${ext}`, { type: audioBlob.type });
 
@@ -44,19 +54,17 @@ export async function POST(request: Request) {
     });
 
     // Save transcript segment
-    if (meetingId) {
-      await supabase.from("transcript_segments").insert({
-        meeting_id: meetingId,
-        text: result.text || "",
-        start_time: 0,
-        end_time: 0,
-        speaker: null,
-      });
-    }
+    await supabase.from("transcript_segments").insert({
+      meeting_id: meetingId,
+      text: result.text || "",
+      start_time: 0,
+      end_time: 0,
+      speaker: null,
+    });
 
     return NextResponse.json({
       text: result.text,
-      audioUrl: publicUrl,
+      audioUrl: signedData.signedUrl,
     });
   } catch (err) {
     console.error("Transcription error:", err);

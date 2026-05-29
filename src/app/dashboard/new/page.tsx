@@ -66,28 +66,22 @@ export default function NewMeetingPage() {
     setProcessingStep(0);
 
     try {
-      let audioUrl: string | undefined;
-      if (selectedFile && user) {
-        const ext = selectedFile.name.split(".").pop() || "webm";
-        const filePath = `${user.id}/${crypto.randomUUID()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from("meeting-audio")
-          .upload(filePath, selectedFile);
-        if (uploadError) throw uploadError;
-        const { data: urlData } = supabase.storage
-          .from("meeting-audio")
-          .getPublicUrl(filePath);
-        audioUrl = urlData?.publicUrl;
-      }
-
+      const useFileUpload = !!selectedFile;
       const res = await fetch("/api/meetings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: useFileUpload ? (() => {
+          const formData = new FormData();
+          formData.append("title", title || "");
+          formData.append("transcript", transcript || "");
+          if (selectedFile) formData.append("file", selectedFile);
+          if (selectedTemplate) formData.append("templateName", selectedTemplate);
+          return formData;
+        })() : JSON.stringify({
           transcript: transcript || undefined,
-          audioUrl: audioUrl,
           title: title || undefined,
+          templateName: selectedTemplate || undefined,
         }),
+        headers: useFileUpload ? undefined : { "Content-Type": "application/json" },
       });
 
       setProcessingStep(2);
@@ -318,13 +312,13 @@ export default function NewMeetingPage() {
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <input ref={fileInputRef} type="file" className="hidden" accept=".mp3,.wav,.m4a,.webm,.ogg" onChange={handleInputChange} />
+          <input ref={fileInputRef} type="file" className="hidden" accept=".mp3,.mp4,.wav,.m4a,.webm,.ogg,.mpeg,.mov,audio/*,video/*" onChange={handleInputChange} />
           <Upload className="w-7 h-7 text-accent-primary mx-auto mb-4" />
           <p className="text-text-primary font-semibold text-[15px] mb-1">
-            Drop your audio file here
+            Drop your meeting recording here
           </p>
           <p className="text-text-muted text-sm mb-4">
-            .mp3, .wav, .m4a, .webm · Maximum 25MB
+            .mp3, .mp4, .wav, .m4a, .webm, .ogg · Maximum 25MB
           </p>
           <span className="text-accent-primary text-sm font-medium underline underline-offset-4 hover:text-accent-primary-hover transition-colors">
             Browse files

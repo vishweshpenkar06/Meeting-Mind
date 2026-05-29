@@ -27,7 +27,6 @@ export async function GET(request: Request) {
         title,
         created_at,
         summary,
-        meeting_type,
         is_public,
         share_token,
         action_items(count),
@@ -95,11 +94,11 @@ export async function GET(request: Request) {
       meetings.sort((a: { id: string }, b: { id: string }) => matchedOrder.indexOf(a.id) - matchedOrder.indexOf(b.id));
     }
 
-    const formatted = meetings?.map((m: { id: string; title: string; created_at: string; meeting_type: string | null; is_public: boolean; share_token: string | null; action_items: { count: number }[]; key_decisions: { count: number }[] }) => ({
+    const formatted = meetings?.map((m: { id: string; title: string; created_at: string; is_public: boolean; share_token: string | null; action_items: { count: number }[]; key_decisions: { count: number }[] }) => ({
       id: m.id,
       title: m.title || "Untitled Meeting",
       date: m.created_at,
-      meetingType: m.meeting_type || "general",
+      meetingType: "general",
       isPublic: m.is_public,
       shareToken: m.share_token,
       tasks: m.action_items?.[0]?.count ?? 0,
@@ -131,19 +130,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { transcript, title, audioUrl, templateId, templateName, durationSeconds } = body as {
-      transcript?: string;
-      title?: string;
-      audioUrl?: string;
-      templateId?: string;
-      templateName?: string;
-      durationSeconds?: number;
-    };
+    const contentType = request.headers.get("content-type") || "";
+    let transcript: string | undefined;
+    let title: string | undefined;
+    let audioUrl: string | undefined;
+    let templateId: string | undefined;
+    let templateName: string | undefined;
+    let durationSeconds: number | undefined;
+    let uploadedFile: File | null = null;
 
-    if (!transcript && !audioUrl) {
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      const transcriptValue = formData.get("transcript");
+      const titleValue = formData.get("title");
+      const audioUrlValue = formData.get("audioUrl");
+      const templateIdValue = formData.get("templateId");
+      const templateNameValue = formData.get("templateName");
+      const durationSecondsValue = formData.get("durationSeconds");
+      const fileValue = formData.get("file");
+
+      transcript = typeof transcriptValue === "string" ? transcriptValue : undefined;
+      title = typeof titleValue === "string" ? titleValue : undefined;
+      audioUrl = typeof audioUrlValue === "string" ? audioUrlValue : undefined;
+      templateId = typeof templateIdValue === "string" ? templateIdValue : undefined;
+      templateName = typeof templateNameValue === "string" ? templateNameValue : undefined;
+      durationSeconds = typeof durationSecondsValue === "string" && durationSecondsValue ? Number(durationSecondsValue) : undefined;
+      uploadedFile = fileValue instanceof File ? fileValue : null;
+    } else {
+      const body = await request.json();
+      ({ transcript, title, audioUrl, templateId, templateName, durationSeconds } = body as {
+        transcript?: string;
+        title?: string;
+        audioUrl?: string;
+        templateId?: string;
+        templateName?: string;
+        durationSeconds?: number;
+      });
+    }
+
+    if (!transcript && !audioUrl && !uploadedFile) {
       return NextResponse.json(
-        { error: "Either transcript or audioUrl is required" },
+        { error: "Either transcript, audioUrl, or file is required" },
         { status: 400 }
       );
     }
@@ -160,9 +187,13 @@ export async function POST(request: Request) {
       templateContext = templates?.ai_prompt_context;
     }
 
-    // If audioUrl is provided but no transcript, download and transcribe the audio
+    // If a file is uploaded but no transcript exists, transcribe the file directly
     let effectiveTranscript = transcript;
-    if (audioUrl && !transcript) {
+    if (uploadedFile && !transcript) {
+      console.log(`Transcribing uploaded file: ${uploadedFile.name}`);
+      effectiveTranscript = await transcribeAudio(uploadedFile, uploadedFile.type || undefined);
+      console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
+    } else if (audioUrl && !transcript) {
       console.log(`Transcribing audio from: ${audioUrl}`);
       const audioRes = await fetch(audioUrl);
       if (!audioRes.ok) {
@@ -174,9 +205,9 @@ export async function POST(request: Request) {
       const audioBlob = await audioRes.blob();
 
       // Extract MIME type from Content-Type header if available
-      const contentType = audioRes.headers.get("content-type") || undefined;
+      const fetchedContentType = audioRes.headers.get("content-type") || undefined;
 
-      effectiveTranscript = await transcribeAudio(audioBlob, contentType);
+      effectiveTranscript = await transcribeAudio(audioBlob, fetchedContentType);
       console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
     }
 
@@ -187,14 +218,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Compute duration from recording timestamps or estimate from word count
-    const recordedDuration = durationSeconds || 0;
-    const estimatedFromWords = Math.round((effectiveTranscript.split(/\s+/).length / 150) * 60);
-    const computedDuration = recordedDuration > 0 ? recordedDuration : estimatedFromWords;
-
-    // Create meeting in DB with status processing
+    // Create meeting in DB
     const shareToken = crypto.randomUUID();
-    const defaultTitle = title || "Processing Meeting...";
+    const inferredTitle = uploadedFile
+      ? uploadedFile.name.replace(/\.[^.]+$/, "").replace(/[._-]+/g, " ").trim()
+      : "";
+    const defaultTitle = title || inferredTitle || "Processing Meeting...";
 
     const { data: meeting, error: meetingError } = await supabase
       .from("meetings")
@@ -206,9 +235,6 @@ export async function POST(request: Request) {
         share_token: shareToken,
         is_public: false,
         audio_url: audioUrl || null,
-        meeting_type: templateName || "general",
-        duration_seconds: computedDuration,
-        analysis_status: "processing",
       })
       .select()
       .single();

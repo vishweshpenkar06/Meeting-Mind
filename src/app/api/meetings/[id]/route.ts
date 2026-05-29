@@ -67,6 +67,7 @@ export async function PATCH(
 
     if (body.title !== undefined) updates.title = body.title;
     if (body.summary !== undefined) updates.summary = body.summary;
+    if (body.raw_transcript !== undefined) updates.raw_transcript = body.raw_transcript;
     if (body.is_public !== undefined) {
       updates.is_public = body.is_public;
       const token = body.is_public ? nodeCrypto.randomUUID() : null;

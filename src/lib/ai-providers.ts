@@ -86,10 +86,47 @@ function makeProviders(): ProviderConfig[] {
   return providers;
 }
 
+function generateFallbackMeetingResult(transcript: string): AIMeetingResult {
+  const cleaned = transcript.trim();
+  const sentences = cleaned
+    .split(/(?:\.\s+|\?\s+|!\s+|\n+)/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const titleWords = cleaned.split(/\s+/).slice(0, 5);
+  const title = titleWords.length > 0 ? titleWords.join(" ") : "Untitled Meeting";
+
+  const summary = sentences.slice(0, 3).join(" ") || cleaned.slice(0, 280) || "Meeting notes could not be generated automatically.";
+
+  const actionCandidates = sentences.filter((sentence) => /\b(action|todo|follow up|follow-up|need to|should|will)\b/i.test(sentence));
+  const decisions = sentences
+    .filter((sentence) => /\b(decided|decision|agreed|approved|confirmed)\b/i.test(sentence))
+    .slice(0, 5);
+
+  const actionItems = actionCandidates.slice(0, 5).map((sentence) => ({
+    owner: "Unassigned",
+    task: sentence.replace(/^[-*\d.\s]+/, "").trim(),
+    dueDate: null,
+  }));
+
+  return {
+    title,
+    summary,
+    decisions: decisions.length > 0 ? decisions : ["No explicit decisions detected in the transcript."],
+    actionItems: actionItems.length > 0 ? actionItems : [
+      {
+        owner: "Unassigned",
+        task: "Review transcript and extract concrete follow-up tasks.",
+        dueDate: null,
+      },
+    ],
+  };
+}
+
 export async function processMeetingWithAI(transcript: string, templateContext?: string): Promise<AIMeetingResult> {
   const providers = makeProviders();
   if (providers.length === 0) {
-    throw new Error("No AI providers configured. Set OPENAI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, or OLLAMA_BASE_URL.");
+    return generateFallbackMeetingResult(transcript);
   }
 
   const fullSystemPrompt = templateContext ? `${templateContext}\n\n${SYSTEM_PROMPT}` : SYSTEM_PROMPT;
@@ -125,7 +162,8 @@ export async function processMeetingWithAI(transcript: string, templateContext?:
     }
   }
 
-  throw new Error(`All AI providers failed:\n${errors.join("\n")}`);
+  console.warn(`All AI providers failed, using fallback notes generator:\n${errors.join("\n")}`);
+  return generateFallbackMeetingResult(transcript);
 }
 
 export async function analyzeSentiment(transcript: string): Promise<number> {
