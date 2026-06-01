@@ -1,9 +1,10 @@
 import { pipeline } from "@xenova/transformers";
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import wavefile from "wavefile";
 
 export interface AIMeetingResult {
   title: string;
@@ -32,7 +33,7 @@ type WhisperTranscriberResult =
     };
 
 type WhisperTranscriber = (
-  audio: string,
+  audio: Float32Array,
   options?: WhisperTranscriberOptions
 ) => Promise<WhisperTranscriberResult>;
 
@@ -98,6 +99,27 @@ async function normalizeMediaBlobToAudioPath(blob: Blob, mimeType?: string): Pro
   }
 }
 
+async function loadAudioSamplesFromWav(wavPath: string): Promise<Float32Array> {
+  const buffer = Buffer.from(await readFile(wavPath));
+  const wav = new wavefile.WaveFile(buffer);
+  wav.toBitDepth("32f");
+  wav.toSampleRate(16000);
+
+  let audioData = wav.getSamples() as unknown as Float32Array | Float32Array[];
+  if (Array.isArray(audioData)) {
+    if (audioData.length > 1) {
+      const scalingFactor = Math.sqrt(2);
+      for (let i = 0; i < audioData[0].length; i += 1) {
+        audioData[0][i] = (scalingFactor * (audioData[0][i] + audioData[1][i])) / 2;
+      }
+    }
+
+    audioData = audioData[0];
+  }
+
+  return audioData;
+}
+
 
 export async function transcribeAudio(
   audioBlob: Blob,
@@ -107,7 +129,8 @@ export async function transcribeAudio(
 
   try {
     const transcriber = await getAsrPipeline();
-    const result = await transcriber(audioPath, {
+    const audioData = await loadAudioSamplesFromWav(audioPath);
+    const result = await transcriber(audioData, {
       chunk_length_s: 30,
       stride_length_s: 5,
       return_timestamps: false,
