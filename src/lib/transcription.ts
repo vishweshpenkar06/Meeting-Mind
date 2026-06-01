@@ -1,7 +1,7 @@
-import { OpenAI } from "openai";
+import { pipeline } from "@xenova/transformers";
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,17 +16,34 @@ export interface AIMeetingResult {
   }>;
 }
 
-async function createOpenAIClient() {
-  const config: ConstructorParameters<typeof OpenAI>[0] = {
-    apiKey: process.env.OPENAI_API_KEY,
-  };
+type WhisperTranscriberOptions = {
+  chunk_length_s?: number;
+  stride_length_s?: number;
+  return_timestamps?: boolean | "word";
+  task?: "transcribe" | "translate" | string;
+  language?: string;
+};
 
-  // OpenRouter support
-  if (process.env.OPENAI_BASE_URL) {
-    config.baseURL = process.env.OPENAI_BASE_URL;
+type WhisperTranscriberResult =
+  | string
+  | {
+      text?: string;
+      chunks?: Array<{ timestamp?: [number, number]; text: string }>;
+    };
+
+type WhisperTranscriber = (
+  audio: string,
+  options?: WhisperTranscriberOptions
+) => Promise<WhisperTranscriberResult>;
+
+let asrPromise: Promise<WhisperTranscriber> | null = null;
+
+async function getAsrPipeline() {
+  if (!asrPromise) {
+    asrPromise = pipeline("automatic-speech-recognition", "Xenova/whisper-small") as Promise<WhisperTranscriber>;
   }
 
-  return new OpenAI(config);
+  return asrPromise;
 }
 
 async function runFfmpeg(args: string[]): Promise<void> {
@@ -46,41 +63,38 @@ async function runFfmpeg(args: string[]): Promise<void> {
   });
 }
 
-async function normalizeMediaBlobToAudioFile(blob: Blob, mimeType?: string): Promise<File> {
+async function normalizeMediaBlobToAudioPath(blob: Blob, mimeType?: string): Promise<{ tempRoot: string; audioPath: string }> {
   const type = mimeType || blob.type || "application/octet-stream";
   const isVideo = type.startsWith("video/");
 
-  if (!isVideo) {
-    const ext = type.split("/")[1] || "mp3";
-    return new File([blob], `audio.${ext}`, { type: type.startsWith("audio/") ? type : "audio/mpeg" });
-  }
-
   const tempRoot = await mkdtemp(join(tmpdir(), "meetingmind-"));
-  const inputExt = type.includes("webm") ? "webm" : type.includes("mov") ? "mov" : "mp4";
+  const inputExt = type.includes("webm") ? "webm" : type.includes("mov") ? "mov" : type.includes("wav") ? "wav" : type.includes("mp3") ? "mp3" : "bin";
   const inputPath = join(tempRoot, `input.${inputExt}`);
-  const outputPath = join(tempRoot, "audio.mp3");
+  const audioPath = isVideo ? join(tempRoot, "audio.mp3") : inputPath;
 
   try {
     await writeFile(inputPath, Buffer.from(await blob.arrayBuffer()));
 
-    await runFfmpeg([
-      "-y",
-      "-i",
-      inputPath,
-      "-vn",
-      "-ac",
-      "1",
-      "-ar",
-      "16000",
-      "-b:a",
-      "64k",
-      outputPath,
-    ]);
+    if (isVideo) {
+      await runFfmpeg([
+        "-y",
+        "-i",
+        inputPath,
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-b:a",
+        "64k",
+        audioPath,
+      ]);
+    }
 
-    const audioBuffer = await readFile(outputPath);
-    return new File([audioBuffer], "audio.mp3", { type: "audio/mpeg" });
-  } finally {
+    return { tempRoot, audioPath };
+  } catch (error) {
     await rm(tempRoot, { recursive: true, force: true });
+    throw error;
   }
 }
 
@@ -89,16 +103,27 @@ export async function transcribeAudio(
   audioBlob: Blob,
   mimeType?: string
 ): Promise<string> {
-  const openai = await createOpenAIClient();
+  const { tempRoot, audioPath } = await normalizeMediaBlobToAudioPath(audioBlob, mimeType);
 
-  // Determine the correct MIME type: use provided hint, blob.type, or default to audio/mpeg
-  const file = await normalizeMediaBlobToAudioFile(audioBlob, mimeType);
+  try {
+    const transcriber = await getAsrPipeline();
+    const result = await transcriber(audioPath, {
+      chunk_length_s: 30,
+      stride_length_s: 5,
+      return_timestamps: false,
+      task: "transcribe",
+    });
 
-  const transcription = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-    prompt: "Speaker A: Hello. Speaker B: Hi there. Speaker A: Let's begin the meeting.",
-  });
+    if (typeof result === "string") {
+      return result;
+    }
 
-  return transcription.text;
+    if (result && typeof result === "object" && "text" in result && typeof (result as { text?: unknown }).text === "string") {
+      return (result as { text: string }).text;
+    }
+
+    return "";
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 }
