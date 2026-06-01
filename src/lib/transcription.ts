@@ -1,4 +1,4 @@
-import { pipeline } from "@xenova/transformers";
+import { pipeline } from "@huggingface/transformers";
 import ffmpegPath from "ffmpeg-static";
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -41,7 +41,7 @@ let asrPromise: Promise<WhisperTranscriber> | null = null;
 
 async function getAsrPipeline() {
   if (!asrPromise) {
-    asrPromise = pipeline("automatic-speech-recognition", "Xenova/whisper-small") as Promise<WhisperTranscriber>;
+    asrPromise = pipeline("automatic-speech-recognition", "Xenova/whisper-tiny") as Promise<WhisperTranscriber>;
   }
 
   return asrPromise;
@@ -66,17 +66,17 @@ async function runFfmpeg(args: string[]): Promise<void> {
 
 async function normalizeMediaBlobToAudioPath(blob: Blob, mimeType?: string): Promise<{ tempRoot: string; audioPath: string }> {
   const type = mimeType || blob.type || "application/octet-stream";
-  const isVideo = type.startsWith("video/");
+  const isWav = type.includes("wav");
 
   const tempRoot = await mkdtemp(join(tmpdir(), "meetingmind-"));
   const inputExt = type.includes("webm") ? "webm" : type.includes("mov") ? "mov" : type.includes("wav") ? "wav" : type.includes("mp3") ? "mp3" : "bin";
   const inputPath = join(tempRoot, `input.${inputExt}`);
-  const audioPath = isVideo ? join(tempRoot, "audio.mp3") : inputPath;
+  const audioPath = join(tempRoot, "audio.wav");
 
   try {
     await writeFile(inputPath, Buffer.from(await blob.arrayBuffer()));
 
-    if (isVideo) {
+    if (!isWav) {
       await runFfmpeg([
         "-y",
         "-i",
@@ -86,8 +86,17 @@ async function normalizeMediaBlobToAudioPath(blob: Blob, mimeType?: string): Pro
         "1",
         "-ar",
         "16000",
-        "-b:a",
-        "64k",
+        audioPath,
+      ]);
+    } else {
+      await runFfmpeg([
+        "-y",
+        "-i",
+        inputPath,
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
         audioPath,
       ]);
     }
@@ -135,6 +144,7 @@ export async function transcribeAudio(
       stride_length_s: 5,
       return_timestamps: false,
       task: "transcribe",
+      language: "en",
     });
 
     if (typeof result === "string") {
