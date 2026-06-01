@@ -19,6 +19,13 @@ import { useRouter } from "next/navigation";
 import { createClient, getUser } from "@/lib/supabase/client";
 import TemplateSelector from "@/components/TemplateSelector";
 
+type DemoResult = {
+  title: string;
+  summary: string;
+  decisions: string[];
+  actionItems: Array<{ owner: string; task: string; dueDate: string | null }>;
+};
+
 export default function NewMeetingPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -39,6 +46,7 @@ export default function NewMeetingPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [agendaItems, setAgendaItems] = useState<string[]>([]);
   const [loadingAgenda, setLoadingAgenda] = useState(false);
+  const [demoResult, setDemoResult] = useState<DemoResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -66,6 +74,7 @@ export default function NewMeetingPage() {
     if (!checkValid()) return;
     setIsProcessing(true);
     setError(null);
+    setDemoResult(null);
     setProcessingStep(0);
 
     try {
@@ -96,6 +105,13 @@ export default function NewMeetingPage() {
 
       const meeting = await res.json();
       setProcessingStep(3);
+
+      if (meeting?.result) {
+        setDemoResult(meeting.result as DemoResult);
+        setIsProcessing(false);
+        setProcessingStep(0);
+        return;
+      }
 
       setTimeout(() => {
         router.push(`/meeting/${meeting.id}`);
@@ -402,6 +418,38 @@ export default function NewMeetingPage() {
       {error && (
         <div className="mb-6 bg-error-muted border border-error/20 rounded-xl px-5 py-4 text-error text-sm">
           {error}
+        </div>
+      )}
+
+      {demoResult && (
+        <div className="mb-6 bg-bg-surface border border-border-subtle rounded-[14px] p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Generated Notes Preview</h2>
+            <p className="text-sm text-text-muted mt-1">This preview was generated locally because you are not signed in. Sign in to save it to the database.</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.08em] text-text-secondary mb-2">Summary</p>
+            <p className="text-text-primary text-[15px] leading-[1.75] whitespace-pre-wrap">{demoResult.summary}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.08em] text-text-secondary mb-2">Key Decisions</p>
+            <ul className="space-y-2">
+              {demoResult.decisions.map((decision, index) => (
+                <li key={index} className="text-sm text-text-primary">- {decision}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.08em] text-text-secondary mb-2">Action Items</p>
+            <ul className="space-y-2">
+              {demoResult.actionItems.map((item, index) => (
+                <li key={index} className="text-sm text-text-primary">
+                  <span className="font-semibold">{item.owner}</span>: {item.task}
+                  {item.dueDate ? <span className="text-text-muted"> (due {item.dueDate})</span> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 

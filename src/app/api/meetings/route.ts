@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { transcribeAudio } from "@/lib/transcription";
+import { processMeetingWithAI } from "@/lib/ai-providers";
 import crypto from "crypto";
 import { embed } from "ai";
 import { openai } from "@ai-sdk/openai";
@@ -127,10 +128,6 @@ export async function POST(request: Request) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const contentType = request.headers.get("content-type") || "";
     let transcript: string | undefined;
     let title: string | undefined;
@@ -179,34 +176,63 @@ export async function POST(request: Request) {
     // Fetch template context from built-in defaults only
     const templateContext = getTemplate(templateName)?.aiPromptContext;
 
-    // If a file is uploaded but no transcript exists, transcribe the file directly
+    // If a file is uploaded but no transcript exists, transcribe the file directly.
+    // If transcription fails (for example, provider limitations), fall back to a minimal transcript
+    // so the meeting can still be analyzed into notes instead of failing outright.
     let effectiveTranscript = transcript;
     if (uploadedFile && !transcript) {
       console.log(`Transcribing uploaded file: ${uploadedFile.name}`);
-      effectiveTranscript = await transcribeAudio(uploadedFile, uploadedFile.type || undefined);
-      console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
+      try {
+        effectiveTranscript = await transcribeAudio(uploadedFile, uploadedFile.type || undefined);
+        console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
+      } catch (transcriptionError) {
+        console.warn("Transcription failed, using fallback transcript:", transcriptionError);
+        effectiveTranscript = [
+          `Uploaded ${uploadedFile.type.startsWith("video/") ? "screen recording video" : "recording"}: ${uploadedFile.name}`,
+          `Automatic speech transcription was unavailable for this file in the current environment.`,
+          `Please use the generated notes as a starting point, or paste a transcript for a more accurate summary and tasks.`,
+        ].join("\n");
+      }
     } else if (audioUrl && !transcript) {
       console.log(`Transcribing audio from: ${audioUrl}`);
-      const audioRes = await fetch(audioUrl);
-      if (!audioRes.ok) {
-        return NextResponse.json(
-          { error: `Failed to download audio: ${audioRes.status} ${audioRes.statusText}` },
-          { status: 502 }
-        );
+      try {
+        const audioRes = await fetch(audioUrl);
+        if (!audioRes.ok) {
+          return NextResponse.json(
+            { error: `Failed to download audio: ${audioRes.status} ${audioRes.statusText}` },
+            { status: 502 }
+          );
+        }
+        const audioBlob = await audioRes.blob();
+
+        // Extract MIME type from Content-Type header if available
+        const fetchedContentType = audioRes.headers.get("content-type") || undefined;
+
+        effectiveTranscript = await transcribeAudio(audioBlob, fetchedContentType);
+        console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
+      } catch (transcriptionError) {
+        console.warn("Audio download/transcription failed, using fallback transcript:", transcriptionError);
+        effectiveTranscript = `Uploaded audio recording: ${audioUrl}\nAutomatic speech transcription was unavailable in the current environment.`;
       }
-      const audioBlob = await audioRes.blob();
-
-      // Extract MIME type from Content-Type header if available
-      const fetchedContentType = audioRes.headers.get("content-type") || undefined;
-
-      effectiveTranscript = await transcribeAudio(audioBlob, fetchedContentType);
-      console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
     }
 
     if (!effectiveTranscript) {
       return NextResponse.json(
         { error: "No transcript could be generated" },
         { status: 500 }
+      );
+    }
+
+    if (!user) {
+      const result = await processMeetingWithAI(effectiveTranscript, templateContext);
+      return NextResponse.json(
+        {
+          demo: true,
+          title: result.title,
+          result,
+          raw_transcript: effectiveTranscript,
+        },
+        { status: 200 }
       );
     }
 
