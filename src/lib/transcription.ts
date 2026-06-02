@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import wavefile from "wavefile";
+import { WaveFile } from "wavefile";
 
 export interface AIMeetingResult {
   title: string;
@@ -110,7 +110,7 @@ async function normalizeMediaBlobToAudioPath(blob: Blob, mimeType?: string): Pro
 
 async function loadAudioSamplesFromWav(wavPath: string): Promise<Float32Array> {
   const buffer = Buffer.from(await readFile(wavPath));
-  const wav = new wavefile.WaveFile(buffer);
+  const wav = new WaveFile(buffer);
   wav.toBitDepth("32f");
   wav.toSampleRate(16000);
 
