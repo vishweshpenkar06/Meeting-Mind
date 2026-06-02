@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { transcribeAudio } from "@/lib/transcription";
+import { transcribeAudio, transcribeMediaFile } from "@/lib/transcription";
 import { processMeetingWithAI } from "@/lib/ai-providers";
 import crypto from "crypto";
 import { embed } from "ai";
@@ -183,7 +183,11 @@ export async function POST(request: Request) {
     if (uploadedFile && !transcript) {
       console.log(`Transcribing uploaded file: ${uploadedFile.name}`);
       try {
-        effectiveTranscript = await transcribeAudio(uploadedFile, uploadedFile.type || undefined);
+        effectiveTranscript = await transcribeMediaFile(
+          Buffer.from(await uploadedFile.arrayBuffer()),
+          uploadedFile.type || "application/octet-stream",
+          uploadedFile.name || "meeting-file"
+        );
         console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
       } catch (transcriptionError) {
         console.warn("Transcription failed, using fallback transcript:", transcriptionError);

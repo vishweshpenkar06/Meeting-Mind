@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import crypto from "node:crypto";
+import { transcribeAudio } from "@/lib/transcription";
 
 export async function POST(request: Request) {
   try {
@@ -37,33 +38,23 @@ export async function POST(request: Request) {
       .createSignedUrl(uploadData.path, 300);
     if (signedError || !signedData?.signedUrl) throw new Error(signedError?.message || "Could not generate signed URL");
 
-    // Download and transcribe with Whisper
+    // Download and transcribe with the shared transcription helper
     const audioRes = await fetch(signedData.signedUrl);
     if (!audioRes.ok) throw new Error(`Failed to fetch audio: ${audioRes.status}`);
     const audioBlob = await audioRes.blob();
-    const audioFile = new File([audioBlob], `segment.${ext}`, { type: audioBlob.type });
-
-    const openai = new (await import("openai")).OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: process.env.OPENAI_BASE_URL,
-    });
-
-    const result = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: process.env.OPENAI_MODEL?.includes("whisper") ? process.env.OPENAI_MODEL : "whisper-1",
-    });
+    const resultText = await transcribeAudio(audioBlob, audioBlob.type || undefined);
 
     // Save transcript segment
     await supabase.from("transcript_segments").insert({
       meeting_id: meetingId,
-      text: result.text || "",
+      text: resultText || "",
       start_time: 0,
       end_time: 0,
       speaker: null,
     });
 
     return NextResponse.json({
-      text: result.text,
+      text: resultText,
       audioUrl: signedData.signedUrl,
     });
   } catch (err) {

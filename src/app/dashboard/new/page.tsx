@@ -51,6 +51,9 @@ export default function NewMeetingPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
+  const isVideoFile = (file: File) =>
+    file.type.startsWith("video/") || ["mp4", "mov", "mkv", "avi", "webm", "m4v"].some((ext) => file.name.toLowerCase().endsWith(`.${ext}`));
+
   useEffect(() => {
     getUser().then(({ user }) => {
       if (user) setUser({ id: user.id });
@@ -67,8 +70,6 @@ export default function NewMeetingPage() {
   const checkValid = () => {
     return (selectedFile || transcript.length > 100) && !isProcessing;
   };
-
-  const maxUploadBytes = uploadKind === "screen" ? 100 * 1024 * 1024 : 25 * 1024 * 1024;
 
   const handleProcess = async () => {
     if (!checkValid()) return;
@@ -124,10 +125,15 @@ export default function NewMeetingPage() {
   };
 
   const handleFileSelect = (file: File) => {
-    if (file.size > maxUploadBytes) {
-      alert(`File too large. Maximum size is ${uploadKind === "screen" ? "100MB" : "25MB"}.`);
+    const videoFile = isVideoFile(file);
+    const maxBytes = videoFile ? 500 * 1024 * 1024 : 25 * 1024 * 1024;
+
+    if (file.size > maxBytes) {
+      alert(`File too large. Maximum size is ${videoFile ? "500MB" : "25MB"}.`);
       return;
     }
+
+    setUploadKind(videoFile ? "screen" : "audio");
     setSelectedFile(file);
     setFileName(file.name);
     setFileSize(`${(file.size / (1024 * 1024)).toFixed(2)} MB`);
@@ -343,14 +349,14 @@ export default function NewMeetingPage() {
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <input ref={fileInputRef} type="file" className="hidden" accept={uploadKind === "screen" ? ".mp4,.mov,.webm,.m4v,video/*" : ".mp3,.wav,.m4a,.webm,.ogg,audio/*"} onChange={handleInputChange} />
+          <input ref={fileInputRef} type="file" className="hidden" accept={uploadKind === "screen" ? ".mp4,.mov,.webm,.m4v,.mkv,.avi,video/*" : ".mp3,.wav,.m4a,.webm,.ogg,audio/*"} onChange={handleInputChange} />
           <Upload className="w-7 h-7 text-accent-primary mx-auto mb-4" />
           <p className="text-text-primary font-semibold text-[15px] mb-1">
             Drop your {uploadKind === "screen" ? "screen recording video" : "meeting recording"} here
           </p>
           <p className="text-text-muted text-sm mb-4">
             {uploadKind === "screen"
-              ? ".mp4, .mov, .webm, .m4v · Maximum 100MB"
+              ? ".mp4, .mov, .webm, .m4v, .mkv, .avi · Maximum 500MB"
               : ".mp3, .wav, .m4a, .webm, .ogg · Maximum 25MB"}
           </p>
           <span className="text-accent-primary text-sm font-medium underline underline-offset-4 hover:text-accent-primary-hover transition-colors">

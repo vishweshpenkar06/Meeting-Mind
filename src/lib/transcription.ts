@@ -1,10 +1,5 @@
-import { pipeline } from "@huggingface/transformers";
-import ffmpegPath from "ffmpeg-static";
-import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { WaveFile } from "wavefile";
+import { OpenAI } from "openai";
+import { extractAudioFromFile, splitAudioIntoChunks } from "./audio-extractor";
 
 export interface AIMeetingResult {
   title: string;
@@ -17,146 +12,45 @@ export interface AIMeetingResult {
   }>;
 }
 
-type WhisperTranscriberOptions = {
-  chunk_length_s?: number;
-  stride_length_s?: number;
-  return_timestamps?: boolean | "word";
-  task?: "transcribe" | "translate" | string;
-  language?: string;
-};
-
-type WhisperTranscriberResult =
-  | string
-  | {
-      text?: string;
-      chunks?: Array<{ timestamp?: [number, number]; text: string }>;
-    };
-
-type WhisperTranscriber = (
-  audio: Float32Array,
-  options?: WhisperTranscriberOptions
-) => Promise<WhisperTranscriberResult>;
-
-let asrPromise: Promise<WhisperTranscriber> | null = null;
-
-async function getAsrPipeline() {
-  if (!asrPromise) {
-    asrPromise = pipeline("automatic-speech-recognition", "Xenova/whisper-tiny") as Promise<WhisperTranscriber>;
-  }
-
-  return asrPromise;
-}
-
-async function runFfmpeg(args: string[]): Promise<void> {
-  const binaryPath = ffmpegPath;
-  if (!binaryPath) {
-    throw new Error("FFmpeg binary not available");
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(binaryPath, args, { windowsHide: true });
-
-    child.once("error", reject);
-    child.once("close", (code: number | null) => {
-      if (code === 0) resolve();
-      else reject(new Error(`FFmpeg exited with code ${code}`));
-    });
-  });
-}
-
-async function normalizeMediaBlobToAudioPath(blob: Blob, mimeType?: string): Promise<{ tempRoot: string; audioPath: string }> {
-  const type = mimeType || blob.type || "application/octet-stream";
-  const isWav = type.includes("wav");
-
-  const tempRoot = await mkdtemp(join(tmpdir(), "meetingmind-"));
-  const inputExt = type.includes("webm") ? "webm" : type.includes("mov") ? "mov" : type.includes("wav") ? "wav" : type.includes("mp3") ? "mp3" : "bin";
-  const inputPath = join(tempRoot, `input.${inputExt}`);
-  const audioPath = join(tempRoot, "audio.wav");
-
-  try {
-    await writeFile(inputPath, Buffer.from(await blob.arrayBuffer()));
-
-    if (!isWav) {
-      await runFfmpeg([
-        "-y",
-        "-i",
-        inputPath,
-        "-vn",
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        audioPath,
-      ]);
-    } else {
-      await runFfmpeg([
-        "-y",
-        "-i",
-        inputPath,
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        audioPath,
-      ]);
-    }
-
-    return { tempRoot, audioPath };
-  } catch (error) {
-    await rm(tempRoot, { recursive: true, force: true });
-    throw error;
-  }
-}
-
-async function loadAudioSamplesFromWav(wavPath: string): Promise<Float32Array> {
-  const buffer = Buffer.from(await readFile(wavPath));
-  const wav = new WaveFile(buffer);
-  wav.toBitDepth("32f");
-  wav.toSampleRate(16000);
-
-  let audioData = wav.getSamples() as unknown as Float32Array | Float32Array[];
-  if (Array.isArray(audioData)) {
-    if (audioData.length > 1) {
-      const scalingFactor = Math.sqrt(2);
-      for (let i = 0; i < audioData[0].length; i += 1) {
-        audioData[0][i] = (scalingFactor * (audioData[0][i] + audioData[1][i])) / 2;
-      }
-    }
-
-    audioData = audioData[0];
-  }
-
-  return audioData;
-}
-
-
 export async function transcribeAudio(
   audioBlob: Blob,
   mimeType?: string
 ): Promise<string> {
-  const { tempRoot, audioPath } = await normalizeMediaBlobToAudioPath(audioBlob, mimeType);
+  const inputBuffer = Buffer.from(await audioBlob.arrayBuffer());
+  const fileName = mimeType?.includes("video/") ? "recording.mp4" : "audio.webm";
 
-  try {
-    const transcriber = await getAsrPipeline();
-    const audioData = await loadAudioSamplesFromWav(audioPath);
-    const result = await transcriber(audioData, {
-      chunk_length_s: 30,
-      stride_length_s: 5,
-      return_timestamps: false,
-      task: "transcribe",
-      language: "en",
-    });
+  return transcribeMediaFile(inputBuffer, mimeType || audioBlob.type || "application/octet-stream", fileName);
+}
 
-    if (typeof result === "string") {
-      return result;
-    }
-
-    if (result && typeof result === "object" && "text" in result && typeof (result as { text?: unknown }).text === "string") {
-      return (result as { text: string }).text;
-    }
-
-    return "";
-  } finally {
-    await rm(tempRoot, { recursive: true, force: true });
+export async function transcribeMediaFile(
+  fileBuffer: Buffer,
+  mimeType: string,
+  fileName: string
+): Promise<string> {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY is not configured");
   }
+
+  const client = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: "https://api.groq.com/openai/v1",
+  });
+
+  const extracted = await extractAudioFromFile(fileBuffer, mimeType, fileName);
+  const chunks = await splitAudioIntoChunks(extracted.buffer, extracted.mimeType, extracted.fileName);
+
+  const transcriptions = await Promise.all(
+    chunks.map(async (chunk) => {
+      const file = new File([new Uint8Array(chunk.buffer)], chunk.fileName, { type: chunk.mimeType });
+      const result = (await client.audio.transcriptions.create({
+        file,
+        model: process.env.GROQ_TRANSCRIPTION_MODEL || "whisper-large-v3-turbo",
+        response_format: "text",
+      })) as string | { text: string };
+
+      return typeof result === "string" ? result : result.text;
+    })
+  );
+
+  return transcriptions.join(" ").replace(/\s+/g, " ").trim();
 }
