@@ -47,7 +47,10 @@ export default function LiveMeetingPage() {
       formData.append("meetingId", meetingId);
 
       const res = await fetch("/api/transcribe-segment", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("Transcription failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Transcription failed (${res.status})`);
+      }
 
       const data = await res.json();
       if (data.text) {
@@ -61,6 +64,8 @@ export default function LiveMeetingPage() {
       }
     } catch (err) {
       console.error("Segment error:", err);
+      const msg = err instanceof Error ? err.message : "Transcription error";
+      setError(msg);
     } finally {
       isProcessingRef.current = false;
       setIsTranscribing(false);

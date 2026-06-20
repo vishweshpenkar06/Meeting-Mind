@@ -30,9 +30,7 @@ export async function GET(request: Request) {
         created_at,
         summary,
         is_public,
-        share_token,
-        action_items(count),
-        key_decisions(count)
+        share_token
       `
       )
       .eq("user_id", user.id);
@@ -135,6 +133,8 @@ export async function POST(request: Request) {
     let templateId: string | undefined;
     let templateName: string | undefined;
     let durationSeconds: number | undefined;
+    let meetingType: string | undefined;
+    let language: string | undefined;
     let uploadedFile: File | null = null;
 
     if (contentType.includes("multipart/form-data")) {
@@ -145,6 +145,8 @@ export async function POST(request: Request) {
       const templateIdValue = formData.get("templateId");
       const templateNameValue = formData.get("templateName");
       const durationSecondsValue = formData.get("durationSeconds");
+      const meetingTypeValue = formData.get("meetingType");
+      const languageValue = formData.get("language");
       const fileValue = formData.get("file");
 
       transcript = typeof transcriptValue === "string" ? transcriptValue : undefined;
@@ -153,16 +155,20 @@ export async function POST(request: Request) {
       templateId = typeof templateIdValue === "string" ? templateIdValue : undefined;
       templateName = typeof templateNameValue === "string" ? templateNameValue : undefined;
       durationSeconds = typeof durationSecondsValue === "string" && durationSecondsValue ? Number(durationSecondsValue) : undefined;
+      meetingType = typeof meetingTypeValue === "string" ? meetingTypeValue : undefined;
+      language = typeof languageValue === "string" ? languageValue : undefined;
       uploadedFile = fileValue instanceof File ? fileValue : null;
     } else {
       const body = await request.json();
-      ({ transcript, title, audioUrl, templateId, templateName, durationSeconds } = body as {
+      ({ transcript, title, audioUrl, templateId, templateName, durationSeconds, meetingType, language } = body as {
         transcript?: string;
         title?: string;
         audioUrl?: string;
         templateId?: string;
         templateName?: string;
         durationSeconds?: number;
+        meetingType?: string;
+        language?: string;
       });
     }
 
@@ -186,7 +192,8 @@ export async function POST(request: Request) {
         effectiveTranscript = await transcribeMediaFile(
           Buffer.from(await uploadedFile.arrayBuffer()),
           uploadedFile.type || "application/octet-stream",
-          uploadedFile.name || "meeting-file"
+          uploadedFile.name || "meeting-file",
+          language
         );
         console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
       } catch (transcriptionError) {
@@ -212,7 +219,7 @@ export async function POST(request: Request) {
         // Extract MIME type from Content-Type header if available
         const fetchedContentType = audioRes.headers.get("content-type") || undefined;
 
-        effectiveTranscript = await transcribeAudio(audioBlob, fetchedContentType);
+        effectiveTranscript = await transcribeAudio(audioBlob, fetchedContentType, language);
         console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
       } catch (transcriptionError) {
         console.warn("Audio download/transcription failed, using fallback transcript:", transcriptionError);
@@ -282,7 +289,7 @@ export async function POST(request: Request) {
     }
 
     // Fetch complete meeting
-    const { data: fullMeeting } = await supabase
+    const { data: fullMeeting, error: fetchError } = await supabase
       .from("meetings")
       .select(
         `
@@ -293,6 +300,11 @@ export async function POST(request: Request) {
       )
       .eq("id", meeting.id)
       .single();
+
+    if (fetchError || !fullMeeting) {
+      console.warn("Failed to fetch full meeting, returning basic data:", fetchError?.message);
+      return NextResponse.json(meeting, { status: 201 });
+    }
 
     return NextResponse.json(fullMeeting, { status: 201 });
   } catch (err) {

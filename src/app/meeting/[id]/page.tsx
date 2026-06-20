@@ -18,6 +18,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { exportToPDF, downloadAsText } from "@/lib/exports";
+import AudioPlayer from "@/components/AudioPlayer";
 
 interface ActionItem {
   id: string;
@@ -32,6 +33,14 @@ interface KeyDecision {
   decision_text: string;
 }
 
+interface TranscriptSegment {
+  id: string;
+  text: string;
+  speaker: string | null;
+  start_time: number | null;
+  end_time: number | null;
+}
+
 interface Meeting {
   id: string;
   title: string;
@@ -39,8 +48,14 @@ interface Meeting {
   created_at: string;
   share_token: string | null;
   is_public: boolean;
+  audio_url: string | null;
+  raw_transcript: string | null;
+  keyTopics?: string[];
+  risks?: Array<{ risk: string; mitigation?: string }>;
+  followUps?: string[];
   action_items: ActionItem[];
   key_decisions: KeyDecision[];
+  transcript_segments?: TranscriptSegment[];
 }
 
 export default function MeetingPage() {
@@ -55,7 +70,6 @@ export default function MeetingPage() {
   const [showMenu, setShowMenu] = useState(false);
   const [editTitle, setEditTitle] = useState(false);
   const [titleValue, setTitleValue] = useState("");
-  const [exporting, setExporting] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
   const [requestedAnalysis, setRequestedAnalysis] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -70,7 +84,9 @@ export default function MeetingPage() {
         setTitleValue(data.title || "");
         setError(null);
       } else {
-        setError("Meeting not found or you don't have access");
+        const errData = await res.json().catch(() => ({}));
+        console.error("Meeting fetch failed:", res.status, errData);
+        setError(errData.error || "Meeting not found or you don't have access");
       }
     } catch (err) {
       console.error("Failed to fetch meeting:", err);
@@ -188,52 +204,6 @@ export default function MeetingPage() {
     }
   };
 
-  const exportAsText = () => {
-    if (!meeting) return;
-    setExporting(true);
-    const actionItems = meeting.action_items || [];
-    const decisions = meeting.key_decisions || [];
-    const completedCount = actionItems.filter((a) => a.is_completed).length;
-
-    let text = `${meeting.title}\n`;
-    text += `${new Date(meeting.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}\n`;
-    text += `${completedCount}/${actionItems.length} tasks completed\n\n`;
-
-    if (meeting.summary) {
-      text += "--- SUMMARY ---\n\n";
-      text += `${meeting.summary}\n\n`;
-    }
-
-    if (decisions.length > 0) {
-      text += "--- KEY DECISIONS ---\n\n";
-      decisions.forEach((d) => {
-        text += `- ${d.decision_text}\n`;
-      });
-      text += "\n";
-    }
-
-    if (actionItems.length > 0) {
-      text += "--- ACTION ITEMS ---\n\n";
-      actionItems.forEach((item) => {
-        const done = item.is_completed ? "[x]" : "[ ]";
-        const due = item.due_date ? ` (due ${new Date(item.due_date).toLocaleDateString()})` : "";
-        text += `${done} [${item.owner_name}] ${item.task_description}${due}\n`;
-      });
-      text += "\n";
-    }
-
-    text += "---\nExported from MeetingMind";
-
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(meeting.title || "meeting").replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setExporting(false);
-  };
-
   const handleDelete = async () => {
     if (!meeting) return;
     try {
@@ -348,14 +318,13 @@ export default function MeetingPage() {
                     <Edit3 className="w-3.5 h-3.5" /> Rename
                   </button>
                   <button
-                    onClick={exportAsText}
-                    disabled={exporting}
+                    onClick={() => { if (meeting) downloadAsText(meeting); setShowMenu(false); }}
                     className="flex items-center gap-3 w-full px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface/50 transition-colors"
                   >
-                    <FileDown className="w-3.5 h-3.5" /> {exporting ? "Exporting..." : "Export Text"}
+                    <FileDown className="w-3.5 h-3.5" /> Export Text
                   </button>
                   <button
-                    onClick={() => { if (meeting) exportToPDF(meeting); }}
+                    onClick={() => { if (meeting) exportToPDF(meeting); setShowMenu(false); }}
                     className="flex items-center gap-3 w-full px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface/50 transition-colors"
                   >
                     <FileText className="w-3.5 h-3.5" /> Export PDF
@@ -462,6 +431,69 @@ export default function MeetingPage() {
 
       <div className="h-px bg-border-subtle my-8" />
 
+      {/* Audio Player */}
+      {meeting.audio_url && (
+        <div style={{ animation: "fadeInUp 0.3s ease both" }}>
+          <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-orange pl-3">
+            <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
+              Recording
+            </span>
+          </div>
+          <AudioPlayer
+            src={meeting.audio_url}
+            segments={meeting.transcript_segments?.map((s) => ({
+              text: s.text,
+              speaker: s.speaker || undefined,
+              start_time: s.start_time || undefined,
+              end_time: s.end_time || undefined,
+            }))}
+          />
+        </div>
+      )}
+
+      {meeting.audio_url && <div className="h-px bg-border-subtle my-8" />}
+
+      {/* Transcript with Speakers */}
+      {meeting.raw_transcript && meeting.raw_transcript.length > 100 && (
+        <div style={{ animation: "fadeInUp 0.3s ease both" }}>
+          <details className="group">
+            <summary className="flex items-center gap-2 mb-3 border-l-2 border-accent-purple pl-3 cursor-pointer list-none">
+              <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
+                Full Transcript
+              </span>
+              <span className="text-xs text-text-muted ml-1">
+                ({meeting.raw_transcript.split(/\s+/).length} words)
+              </span>
+              <span className="text-text-muted text-xs ml-auto group-open:rotate-180 transition-transform">
+                ▼
+              </span>
+            </summary>
+            <div className="bg-bg-surface border border-border-subtle rounded-2xl p-5 max-h-96 overflow-y-auto">
+              {meeting.transcript_segments && meeting.transcript_segments.length > 0 ? (
+                <div className="space-y-3">
+                  {meeting.transcript_segments.map((seg) => (
+                    <div key={seg.id} className="flex gap-3">
+                      {seg.speaker && (
+                        <span className="text-xs font-semibold text-accent-purple bg-accent-purple/10 px-2 py-0.5 rounded flex-shrink-0 h-fit">
+                          {seg.speaker}
+                        </span>
+                      )}
+                      <p className="text-text-primary text-sm leading-relaxed">{seg.text}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-text-secondary text-sm leading-relaxed whitespace-pre-wrap font-[family:var(--font-jetbrains)]" style={{ fontSize: "13px" }}>
+                  {meeting.raw_transcript}
+                </p>
+              )}
+            </div>
+          </details>
+        </div>
+      )}
+
+      {meeting.raw_transcript && meeting.raw_transcript.length > 100 && <div className="h-px bg-border-subtle my-8" />}
+
       {/* Summary */}
       <div style={{ animation: "fadeInUp 0.3s ease both" }}>
         <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-primary pl-3">
@@ -492,20 +524,89 @@ export default function MeetingPage() {
           )}
         </div>
         {decisions.length > 0 ? (
-          <ul className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {decisions.map((d: { id: string; decision_text: string }) => (
-              <li key={d.id} className="flex items-start gap-3 pl-3">
-                <div className="w-[4px] h-[4px] rounded-sm bg-accent-purple mt-2.5 flex-shrink-0" />
-                <span className="text-text-primary text-[14px] leading-[1.65]">{d.decision_text}</span>
-              </li>
+              <div key={d.id} className="pl-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-[4px] h-[4px] rounded-sm bg-accent-purple mt-2.5 flex-shrink-0" />
+                  <span className="text-text-primary text-[14px] leading-[1.65] font-medium">{d.decision_text}</span>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         ) : (
           <p className="text-text-muted italic pl-3">No decisions recorded</p>
         )}
       </div>
 
       <div className="h-px bg-border-subtle my-8" />
+
+      {/* Key Topics */}
+      {meeting.keyTopics && meeting.keyTopics.length > 0 && (
+        <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "150ms" }}>
+          <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-orange pl-3">
+            <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
+              Key Topics
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 pl-3">
+            {meeting.keyTopics.map((topic, i) => (
+              <span key={i} className="text-sm bg-bg-elevated text-text-secondary px-3 py-1.5 rounded-full border border-border-subtle">
+                {topic}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {meeting.keyTopics && meeting.keyTopics.length > 0 && <div className="h-px bg-border-subtle my-8" />}
+
+      {/* Risks & Blockers */}
+      {meeting.risks && meeting.risks.length > 0 && (
+        <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "200ms" }}>
+          <div className="flex items-center gap-2 mb-4 border-l-2 border-error pl-3">
+            <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
+              Risks & Blockers
+            </span>
+            <span className="text-xs text-text-muted ml-1">({meeting.risks.length})</span>
+          </div>
+          <div className="flex flex-col gap-3 pl-3">
+            {meeting.risks.map((r, i) => (
+              <div key={i} className="bg-error-muted/30 border border-error/10 rounded-xl px-4 py-3">
+                <p className="text-text-primary text-sm font-medium">{r.risk}</p>
+                {r.mitigation && r.mitigation !== "No mitigation discussed" && (
+                  <p className="text-text-muted text-xs mt-1">
+                    <span className="font-semibold">Mitigation:</span> {r.mitigation}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {meeting.risks && meeting.risks.length > 0 && <div className="h-px bg-border-subtle my-8" />}
+
+      {/* Follow-ups */}
+      {meeting.followUps && meeting.followUps.length > 0 && (
+        <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "250ms" }}>
+          <div className="flex items-center gap-2 mb-4 border-l-2 border-warning pl-3">
+            <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
+              Open Questions & Follow-ups
+            </span>
+          </div>
+          <ul className="flex flex-col gap-2 pl-3">
+            {meeting.followUps.map((item, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="text-warning text-sm mt-0.5">?</span>
+                <span className="text-text-secondary text-sm leading-relaxed">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {meeting.followUps && meeting.followUps.length > 0 && <div className="h-px bg-border-subtle my-8" />}
 
       {/* Action Items */}
       <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "200ms" }}>

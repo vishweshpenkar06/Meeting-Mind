@@ -106,7 +106,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Sentiment Meter */}
-          <div className="bg-bg-surface border border-border-subtle rounded-2xl p-6">
+          <div className="mb-8 bg-bg-surface border border-border-subtle rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-text-primary mb-4">Overall Meeting Sentiment</h3>
             <div className="relative h-3 bg-bg-elevated rounded-full overflow-hidden mb-2">
               <div
@@ -119,12 +119,48 @@ export default function AnalyticsPage() {
                     : "linear-gradient(90deg, #F87171, #EF4444)",
                 }}
               />
-              <div className="absolute left-1/2 w-0.5 h-full bg-text-muted/20" />
+              <div className="absolute left-1/2 w-0.5 h-full bg-bg-elevated" />
             </div>
             <div className="flex justify-between text-xs text-text-muted">
               <span>Negative (-100)</span>
               <span>Neutral (0)</span>
               <span>Positive (+100)</span>
+            </div>
+          </div>
+
+          {/* Insights & Recommendations */}
+          <div className="bg-bg-surface border border-border-subtle rounded-2xl p-6">
+            <h3 className="text-sm font-semibold text-text-primary mb-4">Insights</h3>
+            <div className="space-y-3">
+              {data.totalMeetings > 0 && (
+                <InsightCard
+                  color={data.avgCompletionRate >= 70 ? "#10B981" : data.avgCompletionRate >= 40 ? "#F59E0B" : "#EF4444"}
+                  title="Task Completion"
+                  value={data.avgCompletionRate >= 70 ? "Strong" : data.avgCompletionRate >= 40 ? "Needs Attention" : "Critical"}
+                  detail={`${data.avgCompletionRate}% of action items completed`}
+                />
+              )}
+              {data.totalMinutes > 0 && (
+                <InsightCard
+                  color="#4F8EF7"
+                  title="Meeting Load"
+                  value={`${Math.round(data.totalMinutes / data.totalMeetings)}m avg`}
+                  detail={`~${Math.round(data.totalMinutes / 60)}h total across ${data.totalMeetings} meetings`}
+                />
+              )}
+              {data.avgSentiment !== 0 && (
+                <InsightCard
+                  color={data.avgSentiment > 0 ? "#10B981" : "#EF4444"}
+                  title="Team Sentiment"
+                  value={data.avgSentiment > 0 ? "Positive" : "Concerning"}
+                  detail={`Score: ${data.avgSentiment > 0 ? "+" : ""}${data.avgSentiment}`}
+                />
+              )}
+              {data.totalMeetings > 0 && data.avgCompletionRate < 50 && (
+                <div className="bg-warning-muted border border-warning/20 rounded-xl px-4 py-3 text-sm text-warning">
+                  Action item completion is below 50%. Consider shorter meetings with clearer ownership.
+                </div>
+              )}
             </div>
           </div>
         </>
@@ -139,6 +175,21 @@ function StatCard({ icon, value, label }: { icon: React.ReactNode; value: string
       <div className="text-text-muted mb-2">{icon}</div>
       <div className="text-2xl font-bold text-text-primary font-[family:var(--font-syne)]">{value}</div>
       <div className="text-xs text-text-muted mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function InsightCard({ color, title, value, detail }: { color: string; title: string; value: string; detail: string }) {
+  return (
+    <div className="flex items-start gap-3 bg-bg-elevated rounded-xl px-4 py-3">
+      <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ background: color }} />
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">{title}</span>
+          <span className="text-sm font-semibold text-text-primary">{value}</span>
+        </div>
+        <p className="text-xs text-text-muted mt-0.5">{detail}</p>
+      </div>
     </div>
   );
 }

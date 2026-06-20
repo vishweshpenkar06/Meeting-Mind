@@ -44,15 +44,27 @@ function outputFileName(fileName: string, suffix: string, extension: string): st
   return `${baseName}${suffix}.${extension}`;
 }
 
+function isAudioMimeType(mimeType: string): boolean {
+  return mimeType.startsWith("audio/");
+}
+
 export async function extractAudioFromFile(
   inputBuffer: Buffer,
   inputMimeType: string,
   inputFileName: string
 ): Promise<NormalizedAudioFile> {
   const mimeType = inputMimeType || "application/octet-stream";
-  const isAudioOnly = mimeType.startsWith("audio/");
 
-  if (isAudioOnly && inputBuffer.length <= 24 * 1024 * 1024) {
+  if (isAudioMimeType(mimeType)) {
+    return {
+      buffer: inputBuffer,
+      mimeType,
+      fileName: inputFileName,
+    };
+  }
+
+  if (!ffmpegPath) {
+    console.warn("ffmpeg-static not available, sending raw file to transcription API");
     return {
       buffer: inputBuffer,
       mimeType,
@@ -100,6 +112,17 @@ export async function splitAudioIntoChunks(
     return [
       {
         buffer: audioBuffer,
+        mimeType,
+        fileName,
+      },
+    ];
+  }
+
+  if (!ffmpegPath) {
+    console.warn("ffmpeg-static not available, sending raw file to transcription API");
+    return [
+      {
+        buffer: audioBuffer.slice(0, maxSizeBytes),
         mimeType,
         fileName,
       },

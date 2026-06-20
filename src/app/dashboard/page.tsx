@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, ArrowRight, Search, X, Trash2, FileText } from "lucide-react";
-import { createClient, getUser } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 interface Meeting {
@@ -20,7 +19,6 @@ export default function DashboardPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [user, setUser] = useState<{ email: string; id: string } | null>(null);
   const [search, setSearch] = useState("");
   const [overdueCount, setOverdueCount] = useState(0);
   const [dismissOverdue, setDismissOverdue] = useState(false);
@@ -31,21 +29,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchMeetings();
-    checkUser();
   }, []);
-
-  const checkUser = async () => {
-    const { user } = await getUser();
-    if (user) {
-      const supabase = createClient();
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("email, name")
-        .eq("id", user.id)
-        .single();
-      setUser({ email: profile?.email || user.email || "", id: user.id });
-    }
-  };
 
   const fetchMeetings = useCallback(async (query?: string) => {
     try {
@@ -88,12 +72,6 @@ export default function DashboardPage() {
     };
   }, [search, fetchMeetings]);
 
-  const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-  };
-
   const handleDelete = async (id: string) => {
     setDeleting(true);
     try {
@@ -125,34 +103,7 @@ export default function DashboardPage() {
   const totalDecisions = meetings.reduce((sum, m) => sum + m.decisions, 0);
 
   return (
-    <div className="min-h-screen bg-bg-base">
-      {/* Top Nav */}
-      <nav className="flex items-center justify-between px-6 md:px-12 h-16 border-b border-border-subtle bg-bg-base/80 backdrop-blur-xl sticky top-0 z-40">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-text-inverse font-bold text-sm"
-            style={{ background: "var(--gradient-hero)" }}>
-            M
-          </div>
-          <span className="font-[family:var(--font-syne)] font-bold text-lg text-text-primary">
-            MeetingMind
-          </span>
-        </div>
-        <div className="flex items-center gap-4">
-          {user && (
-            <span className="text-xs text-text-muted hidden md:block max-w-[200px] truncate">
-              {user.email}
-            </span>
-          )}
-          <button
-            onClick={handleSignOut}
-            className="text-xs text-text-muted hover:text-text-primary transition-colors px-3 py-1.5 rounded-lg hover:bg-bg-elevated/50"
-          >
-            Sign out
-          </button>
-        </div>
-      </nav>
-
-      <div className="max-w-[720px] mx-auto px-6 pt-8 pb-16">
+    <div className="max-w-[720px] mx-auto px-6 pt-8 pb-16">
         {/* Overdue notification banner */}
         {overdueCount > 0 && !dismissOverdue && (
           <div className="mb-4 bg-warning-muted border border-warning/20 rounded-xl px-5 py-3 flex items-center justify-between text-sm">
@@ -324,14 +275,13 @@ export default function DashboardPage() {
             {"\u26A1"} Processing your next meeting takes under 30s
           </p>
         )}
-      </div>
 
-      <style jsx global>{`
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(12px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+        <style jsx global>{`
+          @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
     </div>
   );
 }

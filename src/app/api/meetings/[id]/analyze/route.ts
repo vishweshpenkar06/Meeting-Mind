@@ -68,22 +68,51 @@ export async function POST(
 
       if (result.decisions.length > 0) {
         await supabase.from("key_decisions").insert(
-          result.decisions.map((decision) => ({
+          result.decisions.map((d) => ({
             meeting_id: id,
-            decision_text: decision,
+            decision_text: typeof d === "string" ? d : d.decision,
           }))
         );
       }
     } catch (insertError) {
-      console.warn("Failed saving note details:", insertError);
+      console.warn("Failed saving action items/decisions:", insertError);
+    }
+
+    try {
+      await supabase.from("meeting_notes").delete().eq("meeting_id", id);
+
+      if (result.keyTopics && result.keyTopics.length > 0) {
+        await supabase.from("meeting_notes").insert({
+          meeting_id: id,
+          section: "keyTopics",
+          content: JSON.stringify(result.keyTopics),
+        });
+      }
+      if (result.risks && result.risks.length > 0) {
+        await supabase.from("meeting_notes").insert({
+          meeting_id: id,
+          section: "risks",
+          content: JSON.stringify(result.risks),
+        });
+      }
+      if (result.followUps && result.followUps.length > 0) {
+        await supabase.from("meeting_notes").insert({
+          meeting_id: id,
+          section: "followUps",
+          content: JSON.stringify(result.followUps),
+        });
+      }
+    } catch (notesError) {
+      console.warn("Failed saving notes (table may not exist):", notesError);
     }
 
     try {
       const searchContent = [
         result.title,
         result.summary,
-        ...result.decisions,
+        ...result.decisions.map((d) => typeof d === "string" ? d : d.decision),
         ...result.actionItems.map((item) => `${item.task} (Owner: ${item.owner})`),
+        ...(result.keyTopics || []),
       ].join("\n");
 
       const { embedding } = await embed({

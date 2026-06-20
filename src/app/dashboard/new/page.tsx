@@ -47,6 +47,14 @@ export default function NewMeetingPage() {
   const [agendaItems, setAgendaItems] = useState<string[]>([]);
   const [loadingAgenda, setLoadingAgenda] = useState(false);
   const [demoResult, setDemoResult] = useState<DemoResult | null>(null);
+  const [language, setLanguage] = useState("auto");
+  const [briefing, setBriefing] = useState<{
+    contextSummary: string;
+    pendingItems: string[];
+    suggestedTopics: string[];
+    risks: string[];
+  } | null>(null);
+  const [loadingBriefing, setLoadingBriefing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -88,11 +96,13 @@ export default function NewMeetingPage() {
           formData.append("transcript", transcript || "");
           if (selectedFile) formData.append("file", selectedFile);
           if (selectedTemplate) formData.append("templateName", selectedTemplate);
+          if (language && language !== "auto") formData.append("language", language);
           return formData;
         })() : JSON.stringify({
           transcript: transcript || undefined,
           title: title || undefined,
           templateName: selectedTemplate || undefined,
+          language: language !== "auto" ? language : undefined,
         }),
         headers: useFileUpload ? undefined : { "Content-Type": "application/json" },
       });
@@ -112,6 +122,10 @@ export default function NewMeetingPage() {
         setIsProcessing(false);
         setProcessingStep(0);
         return;
+      }
+
+      if (!meeting?.id) {
+        throw new Error("Meeting was created but no ID was returned. Please check your dashboard.");
       }
 
       setTimeout(() => {
@@ -201,11 +215,13 @@ export default function NewMeetingPage() {
   const handleTemplateSelect = (name: string | null) => {
     if (!name) {
       setSelectedTemplate(null);
+      setBriefing(null);
       return;
     }
     setSelectedTemplate(name);
     setAgendaItems([]);
     setLoadingAgenda(true);
+    setBriefing(null);
     fetch("/api/meetings/generate-agenda", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -215,6 +231,17 @@ export default function NewMeetingPage() {
       .then((data) => { setAgendaItems(data.items || []); })
       .catch(() => {})
       .finally(() => setLoadingAgenda(false));
+
+    setLoadingBriefing(true);
+    fetch("/api/meetings/briefing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templateName: name }),
+    })
+      .then((res) => res.json())
+      .then((data) => { setBriefing(data); })
+      .catch(() => {})
+      .finally(() => setLoadingBriefing(false));
   };
 
   return (
@@ -283,6 +310,68 @@ export default function NewMeetingPage() {
         </div>
       )}
 
+      {/* Pre-Meeting Briefing */}
+      {loadingBriefing && (
+        <div className="mb-6 bg-bg-surface border border-border-subtle rounded-xl px-5 py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Loader2 className="w-3.5 h-3.5 text-accent-purple animate-spin" />
+            <span className="text-text-primary text-sm font-medium">Generating briefing...</span>
+          </div>
+        </div>
+      )}
+      {briefing && !loadingBriefing && (
+        <div className="mb-6 bg-bg-surface border border-accent-purple/30 rounded-xl px-5 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-accent-purple" />
+              <span className="text-text-primary text-sm font-semibold">Pre-Meeting Briefing</span>
+            </div>
+            <button onClick={() => setBriefing(null)} className="text-text-muted hover:text-text-primary">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {briefing.contextSummary && (
+            <p className="text-sm text-text-secondary mb-3">{briefing.contextSummary}</p>
+          )}
+          {briefing.pendingItems.length > 0 && (
+            <div className="mb-2">
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Pending from Past Meetings</p>
+              <ul className="space-y-1">
+                {briefing.pendingItems.map((item, i) => (
+                  <li key={i} className="text-sm text-text-secondary flex gap-2">
+                    <span className="text-warning">•</span> {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {briefing.suggestedTopics.length > 0 && (
+            <div className="mb-2">
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Suggested Topics</p>
+              <div className="flex flex-wrap gap-2">
+                {briefing.suggestedTopics.map((topic, i) => (
+                  <span key={i} className="text-xs bg-bg-elevated text-text-secondary px-2.5 py-1 rounded-full border border-border-subtle">
+                    {topic}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {briefing.risks.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Risks to Watch</p>
+              <ul className="space-y-1">
+                {briefing.risks.map((risk, i) => (
+                  <li key={i} className="text-sm text-warning flex gap-2">
+                    <span>⚠</span> {risk}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Meeting Title Input */}
       <label className="block text-sm font-medium text-text-secondary mb-2">
         Meeting Title (optional)
@@ -292,8 +381,43 @@ export default function NewMeetingPage() {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder={"e.g. Product Sync · April 4"}
-        className="w-full bg-bg-surface border border-border-default rounded-[10px] px-4 py-3 text-text-primary text-[14px] placeholder:text-text-muted mb-8 transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_3px_rgba(79,142,247,0.15)]"
+        className="w-full bg-bg-surface border border-border-default rounded-[10px] px-4 py-3 text-text-primary text-[14px] placeholder:text-text-muted mb-4 transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_3px_rgba(79,142,247,0.15)]"
       />
+
+      {/* Language Selector */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-text-secondary mb-2">
+          Transcription Language
+        </label>
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          className="w-full bg-bg-surface border border-border-default rounded-[10px] px-4 py-3 text-text-primary text-[14px] transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_3px_rgba(79,142,247,0.15)]"
+        >
+          <option value="auto">Auto-detect</option>
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="it">Italian</option>
+          <option value="pt">Portuguese</option>
+          <option value="nl">Dutch</option>
+          <option value="ja">Japanese</option>
+          <option value="ko">Korean</option>
+          <option value="zh">Chinese</option>
+          <option value="hi">Hindi</option>
+          <option value="ar">Arabic</option>
+          <option value="ru">Russian</option>
+          <option value="pl">Polish</option>
+          <option value="tr">Turkish</option>
+          <option value="vi">Vietnamese</option>
+          <option value="th">Thai</option>
+          <option value="sv">Swedish</option>
+          <option value="da">Danish</option>
+          <option value="fi">Finnish</option>
+          <option value="no">Norwegian</option>
+        </select>
+      </div>
 
       {/* Input Mode Tabs */}
       <div className="flex gap-2 mb-6 bg-bg-surface rounded-xl p-1 border border-border-subtle w-fit">

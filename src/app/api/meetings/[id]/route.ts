@@ -16,33 +16,68 @@ export async function GET(
 
     const { data: meeting, error } = await supabase
       .from("meetings")
-      .select(`
-        *,
-        action_items(*),
-        key_decisions(*)
-      `)
+      .select("*")
       .eq("id", id)
       .single();
 
     if (error) {
+      console.error("Meeting fetch error:", error.message, "id:", id);
       return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
     }
 
-    if (meeting.is_public && meeting.share_token) {
-      return NextResponse.json(meeting);
-    }
+    const isOwner = user && meeting.user_id === user.id;
+    const isPublic = meeting.is_public && meeting.share_token;
 
-    if (!user || meeting.user_id !== user.id) {
+    if (!isOwner && !isPublic) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    return NextResponse.json(meeting);
+    let actionItems: unknown[] = [];
+    let keyDecisions: unknown[] = [];
+    let keyTopics: string[] = [];
+    let risks: Array<{ risk: string; mitigation?: string }> = [];
+    let followUps: string[] = [];
+    let segments: unknown[] = [];
+
+    try {
+      const { data } = await supabase.from("action_items").select("*").eq("meeting_id", id);
+      actionItems = data || [];
+    } catch { /* table may not exist */ }
+
+    try {
+      const { data } = await supabase.from("key_decisions").select("*").eq("meeting_id", id);
+      keyDecisions = data || [];
+    } catch { /* table may not exist */ }
+
+    try {
+      const { data: notes } = await supabase.from("meeting_notes").select("section, content").eq("meeting_id", id);
+      if (notes) {
+        const kt = notes.find((n) => n.section === "keyTopics");
+        const r = notes.find((n) => n.section === "risks");
+        const fu = notes.find((n) => n.section === "followUps");
+        if (kt) keyTopics = JSON.parse(kt.content);
+        if (r) risks = JSON.parse(r.content);
+        if (fu) followUps = JSON.parse(fu.content);
+      }
+    } catch { /* table may not exist */ }
+
+    try {
+      const { data } = await supabase.from("transcript_segments").select("*").eq("meeting_id", id).order("created_at", { ascending: true });
+      segments = data || [];
+    } catch { /* table may not exist */ }
+
+    return NextResponse.json({
+      ...meeting,
+      action_items: actionItems,
+      key_decisions: keyDecisions,
+      keyTopics,
+      risks,
+      followUps,
+      transcript_segments: segments,
+    });
   } catch (err) {
     console.error("Error fetching meeting:", err);
-    return NextResponse.json(
-      { error: "Failed to fetch meeting" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch meeting" }, { status: 500 });
   }
 }
 
@@ -89,10 +124,7 @@ export async function PATCH(
     return NextResponse.json(meeting);
   } catch (err) {
     console.error("Error updating meeting:", err);
-    return NextResponse.json(
-      { error: "Failed to update meeting" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update meeting" }, { status: 500 });
   }
 }
 
@@ -124,9 +156,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    return NextResponse.json(
-      { error: "Failed to delete meeting" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete meeting" }, { status: 500 });
   }
 }
