@@ -498,16 +498,14 @@ export default function MeetingPage() {
       <div style={{ animation: "fadeInUp 0.3s ease both" }}>
         <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-primary pl-3">
           <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-            Summary
+            Meeting Notes
           </span>
+          {isProcessing && <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin" />}
         </div>
         {displaySummary ? (
-          <p className="text-text-primary text-[15px] leading-[1.75] whitespace-pre-wrap">
-            {displaySummary}
-            {isProcessing && <span className="inline-block w-2 h-4 bg-accent-primary animate-pulse ml-1 align-middle" />}
-          </p>
+          <SummaryNotes summary={displaySummary} />
         ) : (
-          <p className="text-text-muted italic">{isProcessing ? "Analyzing transcript..." : "No summary available"}</p>
+          <p className="text-text-muted italic">{isProcessing ? "Analyzing transcript..." : "No notes available"}</p>
         )}
       </div>
 
@@ -755,4 +753,129 @@ export default function MeetingPage() {
       `}</style>
     </div>
   );
+}
+
+function SummaryNotes({ summary }: { summary: string }) {
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+
+  const sections = parseSummaryIntoSections(summary);
+  const allExpanded = Object.values(expanded).every(Boolean);
+
+  const toggleAll = () => {
+    if (allExpanded) {
+      setExpanded({});
+    } else {
+      const next: Record<number, boolean> = {};
+      sections.forEach((_, i) => { next[i] = true; });
+      setExpanded(next);
+    }
+  };
+
+  const toggle = (i: number) => {
+    setExpanded((prev) => ({ ...prev, [i]: !prev[i] }));
+  };
+
+  if (sections.length <= 1) {
+    return (
+      <div className="space-y-2">
+        {summary.split("\n").filter(Boolean).map((line, i) => (
+          <div key={i} className="flex items-start gap-3 bg-bg-surface border border-border-subtle rounded-xl px-4 py-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-accent-primary mt-2 flex-shrink-0" />
+            <p className="text-text-primary text-[14px] leading-[1.65]">{line}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={toggleAll}
+        className="text-xs text-accent-primary hover:text-accent-primary-hover transition-colors mb-2 font-medium"
+      >
+        {allExpanded ? "Collapse all" : "Expand all"}
+      </button>
+      {sections.map((section, i) => {
+        const isOpen = expanded[i] ?? (sections.length <= 4);
+        return (
+          <div
+            key={i}
+            className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden"
+            style={{ animation: `fadeInUp 0.3s ease ${i * 0.05}s both` }}
+          >
+            <button
+              onClick={() => toggle(i)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-bg-elevated/40 transition-colors"
+            >
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-text-inverse"
+                style={{ background: section.color }}
+              >
+                {i + 1}
+              </div>
+              <span className="text-sm font-semibold text-text-primary flex-1">{section.heading}</span>
+              <span className={`text-text-muted text-xs transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>
+                ▼
+              </span>
+            </button>
+            {isOpen && (
+              <div className="px-4 pb-3 pl-13">
+                <ul className="space-y-1.5">
+                  {section.points.map((point, j) => (
+                    <li key={j} className="flex items-start gap-2.5">
+                      <span className="text-accent-primary text-xs mt-1">•</span>
+                      <span className="text-text-secondary text-[13px] leading-relaxed">{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function parseSummaryIntoSections(summary: string): Array<{ heading: string; points: string[]; color: string }> {
+  const colors = ["#4F8EF7", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#06B6D4"];
+
+  const lines = summary.split("\n").filter((l) => l.trim());
+  const sections: Array<{ heading: string; points: string[]; color: string }> = [];
+  let current: { heading: string; points: string[]; color: string } | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isHeader = /^#{1,3}\s/.test(trimmed) || /^\*\*[^*]+\*\*:?\s*$/.test(trimmed) || /^[A-Z][A-Za-z\s]+:$/.test(trimmed);
+
+    if (isHeader) {
+      if (current) sections.push(current);
+      const heading = trimmed.replace(/^#{1,3}\s*/, "").replace(/^\*\*/, "").replace(/\*\*:?\s*$/, "").replace(/:\s*$/, "").trim();
+      current = { heading, points: [], color: colors[sections.length % colors.length] };
+    } else {
+      const point = trimmed.replace(/^[-•*]\s*/, "").replace(/^\d+\.\s*/, "").trim();
+      if (!current) {
+        current = { heading: "Overview", points: [], color: colors[0] };
+      }
+      if (point) current.points.push(point);
+    }
+  }
+  if (current) sections.push(current);
+
+  if (sections.length === 0 && summary.trim()) {
+    const sentences = summary.split(/(?<=[.!?])\s+/).filter((s) => s.length > 15);
+    const chunks: string[][] = [];
+    for (let i = 0; i < sentences.length; i += 3) {
+      chunks.push(sentences.slice(i, i + 3));
+    }
+    const headings = ["Overview", "Key Points", "Details", "Additional Notes"];
+    return chunks.map((chunk, i) => ({
+      heading: headings[i] || `Section ${i + 1}`,
+      points: chunk.map((s) => s.trim()),
+      color: colors[i % colors.length],
+    }));
+  }
+
+  return sections;
 }

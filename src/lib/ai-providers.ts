@@ -223,6 +223,20 @@ function generateFallbackMeetingResult(transcript: string): AIMeetingResult {
 
 export async function processMeetingWithAI(transcript: string, templateContext?: string): Promise<AIMeetingResult> {
   const providers = makeProviders();
+
+  const isPlaceholder = /automatic speech transcription was unavailable|transcription was unavailable|could not be generated/i.test(transcript);
+  if (isPlaceholder) {
+    return {
+      title: "Meeting (Transcription Failed)",
+      summary: "The audio/video transcription failed before analysis. The meeting could not be analyzed because no transcript was available.\n\nPossible causes:\n- GROQ_API_KEY is not set or invalid\n- The audio/video file could not be processed\n- FFmpeg is not available for video audio extraction\n\nTo fix this:\n1. Ensure GROQ_API_KEY is set in .env.local (get one free at console.groq.com)\n2. Try pasting the transcript manually instead of uploading",
+      decisions: [],
+      actionItems: [],
+      keyTopics: [],
+      risks: [{ risk: "Transcription pipeline is not working", mitigation: "Set GROQ_API_KEY in .env.local" }],
+      followUps: [],
+    };
+  }
+
   if (providers.length === 0) {
     return generateFallbackMeetingResult(transcript);
   }

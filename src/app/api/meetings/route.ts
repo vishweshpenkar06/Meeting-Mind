@@ -186,23 +186,25 @@ export async function POST(request: Request) {
     // If transcription fails (for example, provider limitations), fall back to a minimal transcript
     // so the meeting can still be analyzed into notes instead of failing outright.
     let effectiveTranscript = transcript;
+    let transcriptionFailed = false;
+
     if (uploadedFile && !transcript) {
-      console.log(`Transcribing uploaded file: ${uploadedFile.name}`);
+      console.log(`Transcribing uploaded file: ${uploadedFile.name} (${uploadedFile.type}, ${(uploadedFile.size / 1024 / 1024).toFixed(1)}MB)`);
       try {
+        const buffer = Buffer.from(await uploadedFile.arrayBuffer());
+        console.log(`File buffer loaded: ${buffer.length} bytes`);
         effectiveTranscript = await transcribeMediaFile(
-          Buffer.from(await uploadedFile.arrayBuffer()),
+          buffer,
           uploadedFile.type || "application/octet-stream",
           uploadedFile.name || "meeting-file",
           language
         );
         console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
       } catch (transcriptionError) {
-        console.warn("Transcription failed, using fallback transcript:", transcriptionError);
-        effectiveTranscript = [
-          `Uploaded ${uploadedFile.type.startsWith("video/") ? "screen recording video" : "recording"}: ${uploadedFile.name}`,
-          `Automatic speech transcription was unavailable for this file in the current environment.`,
-          `Please use the generated notes as a starting point, or paste a transcript for a more accurate summary and tasks.`,
-        ].join("\n");
+        const errMsg = transcriptionError instanceof Error ? transcriptionError.message : String(transcriptionError);
+        console.error("Transcription failed:", errMsg);
+        transcriptionFailed = true;
+        effectiveTranscript = "";
       }
     } else if (audioUrl && !transcript) {
       console.log(`Transcribing audio from: ${audioUrl}`);
@@ -215,23 +217,31 @@ export async function POST(request: Request) {
           );
         }
         const audioBlob = await audioRes.blob();
-
-        // Extract MIME type from Content-Type header if available
         const fetchedContentType = audioRes.headers.get("content-type") || undefined;
 
         effectiveTranscript = await transcribeAudio(audioBlob, fetchedContentType, language);
         console.log(`Transcription complete (${effectiveTranscript.length} chars)`);
       } catch (transcriptionError) {
-        console.warn("Audio download/transcription failed, using fallback transcript:", transcriptionError);
-        effectiveTranscript = `Uploaded audio recording: ${audioUrl}\nAutomatic speech transcription was unavailable in the current environment.`;
+        const errMsg = transcriptionError instanceof Error ? transcriptionError.message : String(transcriptionError);
+        console.error("Audio transcription failed:", errMsg);
+        transcriptionFailed = true;
+        effectiveTranscript = "";
       }
     }
 
-    if (!effectiveTranscript) {
-      return NextResponse.json(
-        { error: "No transcript could be generated" },
-        { status: 500 }
-      );
+    if (!effectiveTranscript || effectiveTranscript.trim().length < 10) {
+      if (transcriptionFailed) {
+        return NextResponse.json(
+          { error: "Transcription failed. Please check that GROQ_API_KEY is set in .env.local and try again. You can also paste the transcript manually." },
+          { status: 422 }
+        );
+      }
+      if (!effectiveTranscript) {
+        return NextResponse.json(
+          { error: "No transcript could be generated" },
+          { status: 500 }
+        );
+      }
     }
 
     if (!user) {

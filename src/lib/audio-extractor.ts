@@ -54,8 +54,10 @@ export async function extractAudioFromFile(
   inputFileName: string
 ): Promise<NormalizedAudioFile> {
   const mimeType = inputMimeType || "application/octet-stream";
+  console.log(`[audio-extractor] Input: ${inputFileName}, type: ${mimeType}, size: ${(inputBuffer.length / 1024 / 1024).toFixed(1)}MB`);
 
   if (isAudioMimeType(mimeType)) {
+    console.log("[audio-extractor] Audio file detected, passing through directly");
     return {
       buffer: inputBuffer,
       mimeType,
@@ -64,13 +66,16 @@ export async function extractAudioFromFile(
   }
 
   if (!ffmpegPath) {
-    console.warn("ffmpeg-static not available, sending raw file to transcription API");
+    console.warn("[audio-extractor] ffmpeg-static not available, sending raw file to transcription API");
     return {
       buffer: inputBuffer,
       mimeType,
       fileName: inputFileName,
     };
   }
+
+  console.log(`[audio-extractor] FFmpeg available at: ${ffmpegPath}`);
+  console.log(`[audio-extractor] Extracting audio from video...`);
 
   const tempRoot = await mkdtemp(join(tmpdir(), "meetingmind-"));
   const inputExt = extensionForMimeType(mimeType, inputFileName);
@@ -79,6 +84,7 @@ export async function extractAudioFromFile(
 
   try {
     await writeFile(inputPath, inputBuffer);
+    console.log(`[audio-extractor] Wrote input to: ${inputPath}`);
 
     await runFfmpeg((runner) => {
       runner
@@ -92,6 +98,7 @@ export async function extractAudioFromFile(
     });
 
     const outputBuffer = await readFile(outputPath);
+    console.log(`[audio-extractor] Audio extracted: ${(outputBuffer.length / 1024 / 1024).toFixed(1)}MB`);
     return {
       buffer: outputBuffer,
       mimeType: "audio/mpeg",

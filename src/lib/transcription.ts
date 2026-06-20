@@ -40,6 +40,7 @@ async function sendToWhisper(
   fileName: string,
   language?: string
 ): Promise<string> {
+  console.log(`[whisper] Sending to Groq: ${fileName}, type: ${mimeType}, size: ${(buffer.length / 1024).toFixed(0)}KB, language: ${language || "auto"}`);
   const file = new File([new Uint8Array(buffer)], fileName, { type: mimeType });
   const params: Record<string, unknown> = {
     file,
@@ -51,7 +52,9 @@ async function sendToWhisper(
   }
   const result = (await client.audio.transcriptions.create(params as never)) as string | { text: string };
 
-  return typeof result === "string" ? result : result.text;
+  const text = typeof result === "string" ? result : result.text;
+  console.log(`[whisper] Transcription result: ${text?.length || 0} chars`);
+  return text;
 }
 
 export async function transcribeMediaFile(
