@@ -94,15 +94,15 @@ export async function GET(request: Request) {
       meetings.sort((a: { id: string }, b: { id: string }) => matchedOrder.indexOf(a.id) - matchedOrder.indexOf(b.id));
     }
 
-    const formatted = meetings?.map((m: { id: string; title: string; created_at: string; is_public: boolean; share_token: string | null; action_items: { count: number }[]; key_decisions: { count: number }[] }) => ({
+    const formatted = meetings?.map((m: { id: string; title: string; created_at: string; is_public: boolean; share_token: string | null }) => ({
       id: m.id,
       title: m.title || "Untitled Meeting",
       date: m.created_at,
       meetingType: "general",
       isPublic: m.is_public,
       shareToken: m.share_token,
-      tasks: m.action_items?.[0]?.count ?? 0,
-      decisions: m.key_decisions?.[0]?.count ?? 0,
+      tasks: 0,
+      decisions: 0,
     }));
 
     return NextResponse.json({
@@ -288,16 +288,10 @@ export async function POST(request: Request) {
       console.warn("Quality metrics computation failed:", qualityErr);
     }
 
-    // Fetch complete meeting
+    // Fetch complete meeting (no joins — tables may not exist)
     const { data: fullMeeting, error: fetchError } = await supabase
       .from("meetings")
-      .select(
-        `
-        *,
-        action_items(*),
-        key_decisions(*)
-      `
-      )
+      .select("*")
       .eq("id", meeting.id)
       .single();
 
