@@ -46,7 +46,14 @@ export async function GET(
 
     try {
       const { data } = await supabase.from("key_decisions").select("*").eq("meeting_id", id);
-      keyDecisions = data || [];
+      keyDecisions = (data || []).map((d: Record<string, unknown>) => ({
+        id: d.id,
+        decision_text: typeof d.decision_text === "string"
+          ? d.decision_text
+          : typeof d.decision_text === "object" && d.decision_text !== null
+            ? (d.decision_text as { decision?: string }).decision || JSON.stringify(d.decision_text)
+            : String(d.decision_text || ""),
+      }));
     } catch { /* table may not exist */ }
 
     try {

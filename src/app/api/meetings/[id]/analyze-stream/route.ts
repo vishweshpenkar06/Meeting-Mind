@@ -96,9 +96,9 @@ export async function POST(
         }
 
         if (object.decisions && object.decisions.length > 0) {
-          const decisionsToInsert = object.decisions.map((text: string) => ({
+          const decisionsToInsert = object.decisions.map((d: string | { decision?: string }) => ({
             meeting_id: id,
-            decision_text: text,
+            decision_text: typeof d === "string" ? d : String(d.decision || JSON.stringify(d)),
           }));
           await supabase.from("key_decisions").insert(decisionsToInsert);
         }
@@ -108,7 +108,7 @@ export async function POST(
           const searchContent = [
             aiTitle,
             object.summary,
-            ...(object.decisions || []),
+            ...(object.decisions || []).map((d: string | { decision?: string }) => typeof d === "string" ? d : d.decision || ""),
             ...(object.actionItems?.map(a => `${a.task} (Owner: ${a.owner})`) || []),
           ].join("\n");
 

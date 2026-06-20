@@ -70,7 +70,11 @@ export async function POST(
         await supabase.from("key_decisions").insert(
           result.decisions.map((d) => ({
             meeting_id: id,
-            decision_text: typeof d === "string" ? d : d.decision,
+            decision_text: typeof d === "string"
+              ? d
+              : typeof d === "object" && d !== null
+                ? String(d.decision || JSON.stringify(d))
+                : String(d),
           }))
         );
       }

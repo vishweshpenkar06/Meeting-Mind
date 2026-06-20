@@ -22,7 +22,7 @@ import TemplateSelector from "@/components/TemplateSelector";
 type DemoResult = {
   title: string;
   summary: string;
-  decisions: string[];
+  decisions: Array<string | { decision?: string; context?: string }>;
   actionItems: Array<{ owner: string; task: string; dueDate: string | null }>;
 };
 
@@ -564,9 +564,12 @@ export default function NewMeetingPage() {
           <div>
             <p className="text-xs uppercase tracking-[0.08em] text-text-secondary mb-2">Key Decisions</p>
             <ul className="space-y-2">
-              {demoResult.decisions.map((decision, index) => (
-                <li key={index} className="text-sm text-text-primary">- {decision}</li>
-              ))}
+              {demoResult.decisions.map((decision, index) => {
+                const text = typeof decision === "string" ? decision : decision.decision || JSON.stringify(decision);
+                return (
+                <li key={index} className="text-sm text-text-primary">- {text}</li>
+                );
+              })}
             </ul>
           </div>
           <div>

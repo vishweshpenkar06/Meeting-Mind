@@ -78,6 +78,7 @@ export default function MeetingPage() {
   const [requestedAnalysis, setRequestedAnalysis] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"notes" | "actions" | "transcript">("notes");
 
   const fetchMeeting = useCallback(async () => {
     try {
@@ -454,52 +455,201 @@ export default function MeetingPage() {
 
       <div className="h-px bg-border-subtle my-8" />
 
-      {/* Audio Player */}
-      {meeting.audio_url && (
-        <div style={{ animation: "fadeInUp 0.3s ease both" }}>
-          <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-orange pl-3">
-            <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-              Recording
-            </span>
+      {/* Tab Bar */}
+      <div className="flex gap-1 bg-bg-surface border border-border-subtle rounded-xl p-1 mb-6">
+        {(["notes", "actions", "transcript"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              activeTab === tab
+                ? "bg-accent-primary text-white shadow-sm"
+                : "text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
+            }`}
+          >
+            {tab === "notes" && "Notes"}
+            {tab === "actions" && `Actions${actionItems.length > 0 ? ` (${actionItems.length})` : ""}`}
+            {tab === "transcript" && "Transcript"}
+          </button>
+        ))}
+      </div>
+
+      {/* === NOTES TAB === */}
+      {activeTab === "notes" && (
+        <div>
+          {/* Summary */}
+          <div style={{ animation: "fadeInUp 0.3s ease both" }}>
+            {displaySummary ? (
+              <SummaryNotes summary={displaySummary} highlight={highlightQuery} />
+            ) : (
+              <p className="text-text-muted italic">{isProcessing ? "Analyzing transcript..." : "No notes available"}</p>
+            )}
           </div>
-          <AudioPlayer
-            src={meeting.audio_url}
-            segments={meeting.transcript_segments?.map((s) => ({
-              text: s.text,
-              speaker: s.speaker || undefined,
-              start_time: s.start_time || undefined,
-              end_time: s.end_time || undefined,
-            }))}
-          />
+
+          <div className="h-px bg-border-subtle my-8" />
+
+          {/* Key Decisions */}
+          {decisions.length > 0 && (
+            <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "100ms" }}>
+              <div className="flex items-center gap-2 mb-4 border-l-2 border-accent-purple pl-3">
+                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">Key Decisions</span>
+                <span className="text-xs text-text-muted ml-1">({decisions.length})</span>
+              </div>
+              <div className="flex flex-col gap-3">
+                {decisions.map((d: { id: string; decision_text: string }) => {
+                  const text = typeof d.decision_text === "string"
+                    ? d.decision_text
+                    : typeof d.decision_text === "object" && d.decision_text !== null
+                      ? (d.decision_text as unknown as { decision?: string }).decision || JSON.stringify(d.decision_text)
+                      : String(d.decision_text || "");
+                  return (
+                  <div key={d.id} className="flex items-start gap-3 pl-3">
+                    <div className="w-[4px] h-[4px] rounded-sm bg-accent-purple mt-2.5 flex-shrink-0" />
+                    <span className="text-text-primary text-[14px] leading-[1.65] font-medium">{text}</span>
+                  </div>
+                  );
+                })}
+              </div>
+              <div className="h-px bg-border-subtle my-8" />
+            </div>
+          )}
+
+          {/* Key Topics */}
+          {meeting.keyTopics && meeting.keyTopics.length > 0 && (
+            <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "150ms" }}>
+              <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-orange pl-3">
+                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">Key Topics</span>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-3">
+                {meeting.keyTopics.map((topic, i) => (
+                  <span key={i} className="text-sm bg-bg-elevated text-text-secondary px-3 py-1.5 rounded-full border border-border-subtle">{topic}</span>
+                ))}
+              </div>
+              <div className="h-px bg-border-subtle my-8" />
+            </div>
+          )}
+
+          {/* Risks */}
+          {meeting.risks && meeting.risks.length > 0 && (
+            <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "200ms" }}>
+              <div className="flex items-center gap-2 mb-4 border-l-2 border-error pl-3">
+                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">Risks & Blockers</span>
+              </div>
+              <div className="flex flex-col gap-3 pl-3">
+                {meeting.risks.map((r, i) => (
+                  <div key={i} className="bg-error-muted/30 border border-error/10 rounded-xl px-4 py-3">
+                    <p className="text-text-primary text-sm font-medium">{r.risk}</p>
+                    {r.mitigation && r.mitigation !== "No mitigation discussed" && (
+                      <p className="text-text-muted text-xs mt-1"><span className="font-semibold">Mitigation:</span> {r.mitigation}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="h-px bg-border-subtle my-8" />
+            </div>
+          )}
+
+          {/* Follow-ups */}
+          {meeting.followUps && meeting.followUps.length > 0 && (
+            <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "250ms" }}>
+              <div className="flex items-center gap-2 mb-4 border-l-2 border-warning pl-3">
+                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">Open Questions</span>
+              </div>
+              <ul className="flex flex-col gap-2 pl-3">
+                {meeting.followUps.map((item, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="text-warning text-sm mt-0.5">?</span>
+                    <span className="text-text-secondary text-sm leading-relaxed">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
-      {meeting.audio_url && <div className="h-px bg-border-subtle my-8" />}
+      {/* === ACTIONS TAB === */}
+      {activeTab === "actions" && (
+        <div>
+          {actionItems.length > 0 ? (
+            <div className="flex flex-col">
+              {actionItems.map((item: { id: string; owner_name: string; task_description: string; due_date: string | null; is_completed?: boolean }) => {
+                const priority = inferPriority(item.task_description, item.due_date);
+                return (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 py-3 px-3 rounded-lg hover:bg-bg-elevated/40 transition-all duration-200 cursor-pointer group border-b border-border-subtle last:border-b-0"
+                  onClick={() => toggleItem(item.id)}
+                >
+                  <div
+                    className="w-[18px] h-[18px] rounded border-[2px] flex items-center justify-center flex-shrink-0 transition-all duration-200"
+                    style={{
+                      borderColor: item.is_completed ? "#34D399" : "#2A3F57",
+                      backgroundColor: item.is_completed ? "#34D399" : "transparent",
+                    }}
+                  >
+                    {item.is_completed && (
+                      <svg className="w-3 h-3 text-text-inverse" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="2,6 5,9 10,3" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-sm flex-shrink-0" style={{ backgroundColor: "rgba(45, 31, 94, 0.6)", color: "#8B5CF6" }}>
+                    {item.owner_name}
+                  </span>
+                  {priority && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wider"
+                      style={{
+                        backgroundColor: priority === "critical" ? "rgba(239,68,68,0.15)" : priority === "high" ? "rgba(245,158,11,0.15)" : "rgba(79,142,247,0.1)",
+                        color: priority === "critical" ? "#EF4444" : priority === "high" ? "#F59E0B" : "#4F8EF7",
+                      }}
+                    >{priority}</span>
+                  )}
+                  <span className="flex-1 text-[14px] transition-all duration-200"
+                    style={{ color: item.is_completed ? "#4A5E78" : "#EDF2FF", textDecoration: item.is_completed ? "line-through" : "none" }}
+                  >{item.task_description}</span>
+                  <span className="text-xs font-[family:var(--font-jetbrains)] flex-shrink-0"
+                    style={{ color: item.is_completed ? "#34D399" : "#4A5E78" }}
+                  >{item.due_date ? new Date(item.due_date).toLocaleDateString() : "No deadline"}</span>
+                </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-text-muted italic">No action items recorded</p>
+          )}
+          {completedCount === actionItems.length && actionItems.length > 0 && (
+            <div className="mt-6 text-center py-4 rounded-xl bg-success-muted border border-success/20 text-success text-sm font-medium">
+              All action items completed!
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Transcript with Speakers */}
-      {meeting.raw_transcript && meeting.raw_transcript.length > 100 && (
-        <div style={{ animation: "fadeInUp 0.3s ease both" }}>
-          <details className="group">
-            <summary className="flex items-center gap-2 mb-3 border-l-2 border-accent-purple pl-3 cursor-pointer list-none">
-              <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-                Full Transcript
-              </span>
-              <span className="text-xs text-text-muted ml-1">
-                ({meeting.raw_transcript.split(/\s+/).length} words)
-              </span>
-              <span className="text-text-muted text-xs ml-auto group-open:rotate-180 transition-transform">
-                ▼
-              </span>
-            </summary>
-            <div className="bg-bg-surface border border-border-subtle rounded-2xl p-5 max-h-96 overflow-y-auto">
+      {/* === TRANSCRIPT TAB === */}
+      {activeTab === "transcript" && (
+        <div>
+          {meeting.audio_url && (
+            <div className="mb-6">
+              <AudioPlayer
+                src={meeting.audio_url}
+                segments={meeting.transcript_segments?.map((s) => ({
+                  text: s.text,
+                  speaker: s.speaker || undefined,
+                  start_time: s.start_time || undefined,
+                  end_time: s.end_time || undefined,
+                }))}
+              />
+            </div>
+          )}
+          {meeting.raw_transcript && meeting.raw_transcript.length > 100 ? (
+            <div className="bg-bg-surface border border-border-subtle rounded-2xl p-5 max-h-[600px] overflow-y-auto">
               {meeting.transcript_segments && meeting.transcript_segments.length > 0 ? (
                 <div className="space-y-3">
                   {meeting.transcript_segments.map((seg) => (
                     <div key={seg.id} className="flex gap-3">
                       {seg.speaker && (
-                        <span className="text-xs font-semibold text-accent-purple bg-accent-purple/10 px-2 py-0.5 rounded flex-shrink-0 h-fit">
-                          {seg.speaker}
-                        </span>
+                        <span className="text-xs font-semibold text-accent-purple bg-accent-purple/10 px-2 py-0.5 rounded flex-shrink-0 h-fit">{seg.speaker}</span>
                       )}
                       <p className="text-text-primary text-sm leading-relaxed">{seg.text}</p>
                     </div>
@@ -511,222 +661,11 @@ export default function MeetingPage() {
                 </p>
               )}
             </div>
-          </details>
-        </div>
-      )}
-
-      {meeting.raw_transcript && meeting.raw_transcript.length > 100 && <div className="h-px bg-border-subtle my-8" />}
-
-      {/* Summary */}
-      <div style={{ animation: "fadeInUp 0.3s ease both" }}>
-        <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-primary pl-3">
-          <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-            Meeting Notes
-          </span>
-          {isProcessing && <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin" />}
-        </div>
-        {displaySummary ? (
-          <SummaryNotes summary={displaySummary} highlight={highlightQuery} />
-        ) : (
-          <p className="text-text-muted italic">{isProcessing ? "Analyzing transcript..." : "No notes available"}</p>
-        )}
-      </div>
-
-      <div className="h-px bg-border-subtle my-8" />
-
-      {/* Key Decisions */}
-      <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "100ms" }}>
-        <div className="flex items-center gap-2 mb-4 border-l-2 border-accent-purple pl-3">
-          <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-            Key Decisions
-          </span>
-          {decisions.length > 0 && (
-            <span className="text-xs text-text-muted ml-1">({decisions.length})</span>
+          ) : (
+            <p className="text-text-muted italic">No transcript available</p>
           )}
         </div>
-        {decisions.length > 0 ? (
-          <div className="flex flex-col gap-4">
-            {decisions.map((d: { id: string; decision_text: string }) => {
-              const text = typeof d.decision_text === "string"
-                ? d.decision_text
-                : typeof d.decision_text === "object" && d.decision_text !== null
-                  ? (d.decision_text as unknown as { decision?: string }).decision || JSON.stringify(d.decision_text)
-                  : String(d.decision_text || "");
-              return (
-              <div key={d.id} className="pl-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-[4px] h-[4px] rounded-sm bg-accent-purple mt-2.5 flex-shrink-0" />
-                  <span className="text-text-primary text-[14px] leading-[1.65] font-medium">{text}</span>
-                </div>
-              </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-text-muted italic pl-3">No decisions recorded</p>
-        )}
-      </div>
-
-      <div className="h-px bg-border-subtle my-8" />
-
-      {/* Key Topics */}
-      {meeting.keyTopics && meeting.keyTopics.length > 0 && (
-        <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "150ms" }}>
-          <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-orange pl-3">
-            <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-              Key Topics
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2 pl-3">
-            {meeting.keyTopics.map((topic, i) => (
-              <span key={i} className="text-sm bg-bg-elevated text-text-secondary px-3 py-1.5 rounded-full border border-border-subtle">
-                {topic}
-              </span>
-            ))}
-          </div>
-        </div>
       )}
-
-      {meeting.keyTopics && meeting.keyTopics.length > 0 && <div className="h-px bg-border-subtle my-8" />}
-
-      {/* Risks & Blockers */}
-      {meeting.risks && meeting.risks.length > 0 && (
-        <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "200ms" }}>
-          <div className="flex items-center gap-2 mb-4 border-l-2 border-error pl-3">
-            <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-              Risks & Blockers
-            </span>
-            <span className="text-xs text-text-muted ml-1">({meeting.risks.length})</span>
-          </div>
-          <div className="flex flex-col gap-3 pl-3">
-            {meeting.risks.map((r, i) => (
-              <div key={i} className="bg-error-muted/30 border border-error/10 rounded-xl px-4 py-3">
-                <p className="text-text-primary text-sm font-medium">{r.risk}</p>
-                {r.mitigation && r.mitigation !== "No mitigation discussed" && (
-                  <p className="text-text-muted text-xs mt-1">
-                    <span className="font-semibold">Mitigation:</span> {r.mitigation}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {meeting.risks && meeting.risks.length > 0 && <div className="h-px bg-border-subtle my-8" />}
-
-      {/* Follow-ups */}
-      {meeting.followUps && meeting.followUps.length > 0 && (
-        <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "250ms" }}>
-          <div className="flex items-center gap-2 mb-4 border-l-2 border-warning pl-3">
-            <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-              Open Questions & Follow-ups
-            </span>
-          </div>
-          <ul className="flex flex-col gap-2 pl-3">
-            {meeting.followUps.map((item, i) => (
-              <li key={i} className="flex items-start gap-3">
-                <span className="text-warning text-sm mt-0.5">?</span>
-                <span className="text-text-secondary text-sm leading-relaxed">{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {meeting.followUps && meeting.followUps.length > 0 && <div className="h-px bg-border-subtle my-8" />}
-
-      {/* Action Items */}
-      <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "200ms" }}>
-        <div className="flex items-center gap-2 mb-4 border-l-2 border-success pl-3">
-          <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
-            Action Items
-          </span>
-          {actionItems.length > 0 && (
-            <span className="text-xs text-text-muted ml-1">
-              ({completedCount}/{actionItems.length} done)
-            </span>
-          )}
-        </div>
-        {actionItems.length > 0 ? (
-          <div className="flex flex-col">
-            {actionItems.map((item: { id: string; owner_name: string; task_description: string; due_date: string | null; is_completed?: boolean }) => {
-              const priority = inferPriority(item.task_description, item.due_date);
-              return (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 py-3 px-3 rounded-lg hover:bg-bg-elevated/40 transition-all duration-200 cursor-pointer group"
-                onClick={() => toggleItem(item.id)}
-              >
-                <div
-                  className="w-[18px] h-[18px] rounded border-[2px] flex items-center justify-center flex-shrink-0 transition-all duration-200"
-                  style={{
-                    borderColor: item.is_completed ? "#34D399" : "#2A3F57",
-                    backgroundColor: item.is_completed ? "#34D399" : "transparent",
-                  }}
-                >
-                  {item.is_completed && (
-                    <svg className="w-3 h-3 text-text-inverse" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="2,6 5,9 10,3" />
-                    </svg>
-                  )}
-                </div>
-
-                <span
-                  className="text-xs font-semibold px-2.5 py-0.5 rounded-sm flex-shrink-0"
-                  style={{ backgroundColor: "rgba(45, 31, 94, 0.6)", color: "#8B5CF6" }}
-                >
-                  {item.owner_name}
-                </span>
-
-                {priority && (
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wider"
-                    style={{
-                      backgroundColor: priority === "critical" ? "rgba(239,68,68,0.15)" : priority === "high" ? "rgba(245,158,11,0.15)" : "rgba(79,142,247,0.1)",
-                      color: priority === "critical" ? "#EF4444" : priority === "high" ? "#F59E0B" : "#4F8EF7",
-                    }}
-                  >
-                    {priority}
-                  </span>
-                )}
-
-                <span
-                  className="flex-1 text-[14px] transition-all duration-200"
-                  style={{
-                    color: item.is_completed ? "#4A5E78" : "#EDF2FF",
-                    textDecoration: item.is_completed ? "line-through" : "none",
-                  }}
-                >
-                  {item.task_description}
-                </span>
-
-                <span
-                  className="text-xs font-[family:var(--font-jetbrains)] flex-shrink-0"
-                  style={{ color: item.is_completed ? "#34D399" : "#4A5E78" }}
-                >
-                  {item.due_date
-                    ? new Date(item.due_date).toLocaleDateString()
-                    : "No deadline"}
-                </span>
-              </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-text-muted italic pl-3">No action items recorded</p>
-        )}
-
-        {/* All complete celebration */}
-        {completedCount === actionItems.length && actionItems.length > 0 && (
-          <div
-            className="mt-6 text-center py-4 rounded-xl bg-success-muted border border-success/20 text-success text-sm font-medium"
-            style={{ animation: "fadeInUp 0.3s ease both" }}
-          >
-            {"\u{1F389}"} All action items completed!
-          </div>
-        )}
-      </div>
 
       <div className="h-px bg-border-subtle my-8" />
 
