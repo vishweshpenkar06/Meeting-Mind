@@ -10,7 +10,7 @@ export interface ActionItem {
 
 export interface KeyDecision {
   id: string;
-  decision_text: string;
+  decision_text: string | { decision?: string; context?: string };
 }
 
 export interface Meeting {
@@ -61,7 +61,8 @@ export function exportToPDF(meeting: Meeting) {
     doc.setTextColor(0, 0, 0);
     meeting.key_decisions.forEach((d) => {
       checkPage();
-      const lines = doc.splitTextToSize(`- ${d.decision_text}`, contentWidth);
+      const t = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
+      const lines = doc.splitTextToSize(`- ${t}`, contentWidth);
       doc.text(lines, margin + 2, y);
       y += lines.length * 5 + 2;
     });
@@ -111,7 +112,8 @@ export function downloadAsText(meeting: Meeting) {
   if (meeting.key_decisions.length > 0) {
     text += `--- KEY DECISIONS ---\n\n`;
     meeting.key_decisions.forEach((d) => {
-      text += `- ${d.decision_text}\n`;
+      const t = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
+      text += `- ${t}\n`;
     });
     text += "\n";
   }
@@ -134,4 +136,76 @@ export function downloadAsText(meeting: Meeting) {
   a.download = `${(meeting.title || "meeting").replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.txt`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export function downloadAsMarkdown(meeting: Meeting) {
+  let md = `# ${meeting.title || "Untitled Meeting"}\n\n`;
+  md += `**Date:** ${new Date(meeting.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}\n`;
+  md += `**Tasks:** ${meeting.action_items.filter((a) => a.is_completed).length}/${meeting.action_items.length} completed\n\n`;
+
+  if (meeting.summary) {
+    md += `## Summary\n\n${meeting.summary}\n\n`;
+  }
+
+  if (meeting.key_decisions.length > 0) {
+    md += `## Key Decisions\n\n`;
+    meeting.key_decisions.forEach((d) => {
+      const t = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
+      md += `- ${t}\n`;
+    });
+    md += "\n";
+  }
+
+  if (meeting.action_items.length > 0) {
+    md += `## Action Items\n\n`;
+    meeting.action_items.forEach((item) => {
+      const done = item.is_completed ? "x" : " ";
+      const due = item.due_date ? ` *(due ${new Date(item.due_date).toLocaleDateString()})*` : "";
+      md += `- [${done}] **${item.owner_name}**: ${item.task_description}${due}\n`;
+    });
+    md += "\n";
+  }
+
+  md += `---\n*Exported from MeetingMind*\n`;
+
+  const blob = new Blob([md], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${(meeting.title || "meeting").replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function copyShareFormat(meeting: Meeting): string {
+  const date = new Date(meeting.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const completed = meeting.action_items.filter((a) => a.is_completed).length;
+  const total = meeting.action_items.length;
+
+  let text = `*${meeting.title || "Untitled Meeting"}*\n`;
+  text += `${date} · ${completed}/${total} tasks done\n\n`;
+
+  if (meeting.summary) {
+    text += `${meeting.summary}\n\n`;
+  }
+
+  if (meeting.key_decisions.length > 0) {
+    text += `*Key Decisions:*\n`;
+    meeting.key_decisions.forEach((d) => {
+      const t = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
+      text += `> ${t}\n`;
+    });
+    text += "\n";
+  }
+
+  if (meeting.action_items.length > 0) {
+    text += `*Action Items:*\n`;
+    meeting.action_items.forEach((item) => {
+      const icon = item.is_completed ? "✅" : "⬜";
+      const due = item.due_date ? ` (due ${new Date(item.due_date).toLocaleDateString()})` : "";
+      text += `${icon} *${item.owner_name}*: ${item.task_description}${due}\n`;
+    });
+  }
+
+  return text;
 }

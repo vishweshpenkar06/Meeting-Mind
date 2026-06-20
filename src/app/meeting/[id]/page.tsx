@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Share2,
@@ -16,8 +16,10 @@ import {
   X,
   Eye,
   EyeOff,
+  Clipboard,
+  Download,
 } from "lucide-react";
-import { exportToPDF, downloadAsText } from "@/lib/exports";
+import { exportToPDF, downloadAsText, downloadAsMarkdown, copyShareFormat } from "@/lib/exports";
 import AudioPlayer from "@/components/AudioPlayer";
 
 interface ActionItem {
@@ -61,6 +63,8 @@ interface Meeting {
 export default function MeetingPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightQuery = searchParams.get("q") || "";
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +103,25 @@ export default function MeetingPage() {
   useEffect(() => {
     fetchMeeting();
   }, [fetchMeeting]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showMenu) setShowMenu(false);
+        if (editTitle) { setEditTitle(false); setTitleValue(meeting?.title || ""); }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        router.push("/dashboard");
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "e") {
+        e.preventDefault();
+        if (meeting) downloadAsMarkdown(meeting);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showMenu, editTitle, meeting, router]);
 
   useEffect(() => {
     if (meeting && !meeting.summary && !requestedAnalysis) {
@@ -503,7 +526,7 @@ export default function MeetingPage() {
           {isProcessing && <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin" />}
         </div>
         {displaySummary ? (
-          <SummaryNotes summary={displaySummary} />
+          <SummaryNotes summary={displaySummary} highlight={highlightQuery} />
         ) : (
           <p className="text-text-muted italic">{isProcessing ? "Analyzing transcript..." : "No notes available"}</p>
         )}
@@ -523,14 +546,21 @@ export default function MeetingPage() {
         </div>
         {decisions.length > 0 ? (
           <div className="flex flex-col gap-4">
-            {decisions.map((d: { id: string; decision_text: string }) => (
+            {decisions.map((d: { id: string; decision_text: string }) => {
+              const text = typeof d.decision_text === "string"
+                ? d.decision_text
+                : typeof d.decision_text === "object" && d.decision_text !== null
+                  ? (d.decision_text as unknown as { decision?: string }).decision || JSON.stringify(d.decision_text)
+                  : String(d.decision_text || "");
+              return (
               <div key={d.id} className="pl-3">
                 <div className="flex items-start gap-3">
                   <div className="w-[4px] h-[4px] rounded-sm bg-accent-purple mt-2.5 flex-shrink-0" />
-                  <span className="text-text-primary text-[14px] leading-[1.65] font-medium">{d.decision_text}</span>
+                  <span className="text-text-primary text-[14px] leading-[1.65] font-medium">{text}</span>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p className="text-text-muted italic pl-3">No decisions recorded</p>
@@ -620,7 +650,9 @@ export default function MeetingPage() {
         </div>
         {actionItems.length > 0 ? (
           <div className="flex flex-col">
-            {actionItems.map((item: { id: string; owner_name: string; task_description: string; due_date: string | null; is_completed?: boolean }) => (
+            {actionItems.map((item: { id: string; owner_name: string; task_description: string; due_date: string | null; is_completed?: boolean }) => {
+              const priority = inferPriority(item.task_description, item.due_date);
+              return (
               <div
                 key={item.id}
                 className="flex items-center gap-3 py-3 px-3 rounded-lg hover:bg-bg-elevated/40 transition-all duration-200 cursor-pointer group"
@@ -647,6 +679,18 @@ export default function MeetingPage() {
                   {item.owner_name}
                 </span>
 
+                {priority && (
+                  <span
+                    className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wider"
+                    style={{
+                      backgroundColor: priority === "critical" ? "rgba(239,68,68,0.15)" : priority === "high" ? "rgba(245,158,11,0.15)" : "rgba(79,142,247,0.1)",
+                      color: priority === "critical" ? "#EF4444" : priority === "high" ? "#F59E0B" : "#4F8EF7",
+                    }}
+                  >
+                    {priority}
+                  </span>
+                )}
+
                 <span
                   className="flex-1 text-[14px] transition-all duration-200"
                   style={{
@@ -666,7 +710,8 @@ export default function MeetingPage() {
                     : "No deadline"}
                 </span>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p className="text-text-muted italic pl-3">No action items recorded</p>
@@ -686,17 +731,39 @@ export default function MeetingPage() {
       <div className="h-px bg-border-subtle my-8" />
 
       {/* Bottom Actions */}
-      <div className="flex items-center justify-center gap-4 pb-8">
+      <div className="flex items-center justify-center flex-wrap gap-3 pb-8">
         <button
           onClick={handleShare}
-          className="flex items-center gap-2 border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-5 py-2.5 rounded-[10px] text-sm font-medium transition-all"
+          className="flex items-center gap-2 border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all"
         >
           <Share2 className="w-4 h-4" />
-          Share
+          Share Link
+        </button>
+        <button
+          onClick={() => {
+            if (!meeting) return;
+            const text = copyShareFormat(meeting);
+            navigator.clipboard?.writeText(text).then(() => {
+              setCopied(true);
+              setShowToast("Copied to clipboard — paste into Slack or email");
+              setTimeout(() => { setCopied(false); setShowToast(null); }, 2500);
+            });
+          }}
+          className="flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all"
+        >
+          <Clipboard className="w-4 h-4" />
+          Copy for Slack
+        </button>
+        <button
+          onClick={() => { if (meeting) downloadAsMarkdown(meeting); }}
+          className="flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all"
+        >
+          <Download className="w-4 h-4" />
+          Export Markdown
         </button>
         <button
           onClick={() => { if (meeting) downloadAsText(meeting); }}
-          className="flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-5 py-2.5 rounded-[10px] text-sm font-medium transition-all"
+          className="flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all"
         >
           <FileDown className="w-4 h-4" />
           Export Text
@@ -755,7 +822,7 @@ export default function MeetingPage() {
   );
 }
 
-function SummaryNotes({ summary }: { summary: string }) {
+function SummaryNotes({ summary, highlight }: { summary: string; highlight?: string }) {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   const sections = parseSummaryIntoSections(summary);
@@ -781,7 +848,9 @@ function SummaryNotes({ summary }: { summary: string }) {
         {summary.split("\n").filter(Boolean).map((line, i) => (
           <div key={i} className="flex items-start gap-3 bg-bg-surface border border-border-subtle rounded-xl px-4 py-3">
             <div className="w-1.5 h-1.5 rounded-full bg-accent-primary mt-2 flex-shrink-0" />
-            <p className="text-text-primary text-[14px] leading-[1.65]">{line}</p>
+            <p className="text-text-primary text-[14px] leading-[1.65]">
+              <HighlightText text={line} query={highlight} />
+            </p>
           </div>
         ))}
       </div>
@@ -814,7 +883,9 @@ function SummaryNotes({ summary }: { summary: string }) {
               >
                 {i + 1}
               </div>
-              <span className="text-sm font-semibold text-text-primary flex-1">{section.heading}</span>
+              <span className="text-sm font-semibold text-text-primary flex-1">
+                <HighlightText text={section.heading} query={highlight} />
+              </span>
               <span className={`text-text-muted text-xs transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}>
                 ▼
               </span>
@@ -825,7 +896,9 @@ function SummaryNotes({ summary }: { summary: string }) {
                   {section.points.map((point, j) => (
                     <li key={j} className="flex items-start gap-2.5">
                       <span className="text-accent-primary text-xs mt-1">•</span>
-                      <span className="text-text-secondary text-[13px] leading-relaxed">{point}</span>
+                      <span className="text-text-secondary text-[13px] leading-relaxed">
+                        <HighlightText text={point} query={highlight} />
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -878,4 +951,39 @@ function parseSummaryIntoSections(summary: string): Array<{ heading: string; poi
   }
 
   return sections;
+}
+
+function inferPriority(task: string, dueDate: string | null): "critical" | "high" | "medium" | null {
+  const lower = task.toLowerCase();
+  if (/\b(urgent|critical|asap|immediately|blocker|p0|emergency)\b/i.test(lower)) return "critical";
+  if (/\b(high priority|important|this week|by friday|deadline)\b/i.test(lower)) return "high";
+  if (dueDate) {
+    const due = new Date(dueDate);
+    const now = new Date();
+    const daysUntil = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysUntil <= 2) return "critical";
+    if (daysUntil <= 7) return "high";
+  }
+  return null;
+}
+
+function HighlightText({ text, query }: { text: string; query?: string }) {
+  if (!query || query.length < 2) return <>{text}</>;
+
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+  const parts = text.split(regex);
+
+  return (
+    <>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <mark key={i} className="bg-warning/30 text-text-primary rounded px-0.5">
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
 }

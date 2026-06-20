@@ -31,6 +31,21 @@ export default function DashboardPage() {
     fetchMeetings();
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        document.getElementById("search-input")?.focus();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") {
+        e.preventDefault();
+        router.push("/dashboard/new");
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [router]);
+
   const fetchMeetings = useCallback(async (query?: string) => {
     try {
       const url = query ? `/api/meetings?q=${encodeURIComponent(query)}` : "/api/meetings";
@@ -137,10 +152,11 @@ export default function DashboardPage() {
         <div className="relative mb-6">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
           <input
+            id="search-input"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search meetings..."
+            placeholder="Search meetings... (Ctrl+K)"
             className="w-full bg-bg-surface border border-border-subtle rounded-xl pl-10 pr-10 py-3 text-text-primary text-sm placeholder:text-text-muted focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_3px_rgba(79,142,247,0.15)] transition-all"
           />
           {searchLoading ? (
@@ -203,7 +219,10 @@ export default function DashboardPage() {
               <div
                 key={m.id}
                 className="relative bg-bg-surface border rounded-[14px] px-6 py-5 group flex items-center justify-between hover:border-border-default hover:shadow-[0_8px_24px_rgba(0,0,0,0.5),0_2px_8px_rgba(79,142,247,0.08)] hover:-translate-y-[1px] transition-all duration-200 cursor-pointer"
-                onClick={() => router.push(`/meeting/${m.id}`)}
+                onClick={() => {
+                  const q = search ? "?q=" + encodeURIComponent(search) : "";
+                  router.push("/meeting/" + m.id + q);
+                }}
                 style={{
                   borderLeft: `3px solid ${i % 3 === 0 ? "#4F8EF7" : i % 3 === 1 ? "#8B5CF6" : "#10B981"}`,
                   animation: `fadeInUp 0.4s ease ${i * 0.06}s both`,

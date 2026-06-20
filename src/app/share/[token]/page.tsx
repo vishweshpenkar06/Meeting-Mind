@@ -99,14 +99,17 @@ export default async function SharedMeetingPage({
                 </span>
               </div>
               <ul className="flex flex-col gap-3">
-                {decisions.map((d: { id: string; decision_text: string }) => (
+                {decisions.map((d: { id: string; decision_text: string | { decision?: string } }) => {
+                  const text = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
+                  return (
                   <li key={d.id} className="flex items-start gap-3 pl-3">
                     <div className="w-[4px] h-[4px] rounded-sm bg-accent-purple mt-2.5 flex-shrink-0" />
                     <span className="text-text-primary text-[14px] leading-[1.6]">
-                      {d.decision_text}
+                      {text}
                     </span>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
             <div className="h-px bg-border-subtle my-8" />
