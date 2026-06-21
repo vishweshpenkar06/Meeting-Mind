@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { processMeetingWithAI } from "@/lib/ai-providers";
+import { processMeetingWithAI, diarizeTranscript } from "@/lib/ai-providers";
 import { embed } from "ai";
 import { openai } from "@ai-sdk/openai";
 
@@ -80,6 +80,27 @@ export async function POST(
       }
     } catch (insertError) {
       console.warn("Failed saving action items/decisions:", insertError);
+    }
+
+    try {
+      const transcript = meeting.raw_transcript || "";
+      if (transcript.length > 50) {
+        const segments = await diarizeTranscript(transcript);
+        if (segments.length > 0) {
+          await supabase.from("transcript_segments").delete().eq("meeting_id", id);
+          await supabase.from("transcript_segments").insert(
+            segments.map((seg) => ({
+              meeting_id: id,
+              speaker: seg.speaker,
+              text: seg.text,
+              start_time: null,
+              end_time: null,
+            }))
+          );
+        }
+      }
+    } catch (diarizationError) {
+      console.warn("Diarization failed (non-blocking):", diarizationError);
     }
 
     try {

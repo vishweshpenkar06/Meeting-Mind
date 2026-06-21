@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { exportToPDF, downloadAsText, downloadAsMarkdown, copyShareFormat } from "@/lib/exports";
 import AudioPlayer from "@/components/AudioPlayer";
+import InteractiveTranscript from "@/components/InteractiveTranscript";
 
 interface ActionItem {
   id: string;
@@ -79,6 +80,7 @@ export default function MeetingPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"notes" | "actions" | "transcript">("notes");
+  const [isDiarizing, setIsDiarizing] = useState(false);
 
   const fetchMeeting = useCallback(async () => {
     try {
@@ -146,6 +148,30 @@ export default function MeetingPage() {
         });
     }
   }, [meeting, params.id, requestedAnalysis, fetchMeeting]);
+
+  useEffect(() => {
+    if (
+      activeTab === "transcript" &&
+      meeting &&
+      meeting.raw_transcript &&
+      meeting.raw_transcript.length > 50 &&
+      (!meeting.transcript_segments || meeting.transcript_segments.length === 0) &&
+      !isDiarizing
+    ) {
+      setIsDiarizing(true);
+      fetch(`/api/meetings/${params.id}/diarize`, { method: "POST" })
+        .then(async (res) => {
+          if (res.ok) {
+            const data = await res.json();
+            if (data.segments && data.segments.length > 0) {
+              setMeeting((prev) => prev ? { ...prev, transcript_segments: data.segments } : prev);
+            }
+          }
+        })
+        .catch((err) => console.error("Diarization failed:", err))
+        .finally(() => setIsDiarizing(false));
+    }
+  }, [activeTab, meeting, params.id, isDiarizing]);
 
   const toggleItem = async (actionItemId: string) => {
     if (!meeting || toggling) return;
@@ -643,22 +669,21 @@ export default function MeetingPage() {
             </div>
           )}
           {meeting.raw_transcript && meeting.raw_transcript.length > 100 ? (
-            <div className="bg-bg-surface border border-border-subtle rounded-2xl p-5 max-h-[600px] overflow-y-auto">
+            <div className="bg-bg-surface border border-border-subtle rounded-2xl p-5">
               {meeting.transcript_segments && meeting.transcript_segments.length > 0 ? (
-                <div className="space-y-3">
-                  {meeting.transcript_segments.map((seg) => (
-                    <div key={seg.id} className="flex gap-3">
-                      {seg.speaker && (
-                        <span className="text-xs font-semibold text-accent-purple bg-accent-purple/10 px-2 py-0.5 rounded flex-shrink-0 h-fit">{seg.speaker}</span>
-                      )}
-                      <p className="text-text-primary text-sm leading-relaxed">{seg.text}</p>
-                    </div>
-                  ))}
+                <InteractiveTranscript segments={meeting.transcript_segments} />
+              ) : isDiarizing ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Loader2 className="w-6 h-6 text-accent-primary animate-spin" />
+                  <p className="text-text-secondary text-sm">Identifying speakers...</p>
+                  <p className="text-text-muted text-xs">This may take a moment for long transcripts</p>
                 </div>
               ) : (
-                <p className="text-text-secondary text-sm leading-relaxed whitespace-pre-wrap font-[family:var(--font-jetbrains)]" style={{ fontSize: "13px" }}>
-                  {meeting.raw_transcript}
-                </p>
+                <div className="space-y-3">
+                  <p className="text-text-secondary text-sm leading-relaxed whitespace-pre-wrap font-[family:var(--font-jetbrains)]" style={{ fontSize: "13px" }}>
+                    {meeting.raw_transcript}
+                  </p>
+                </div>
               )}
             </div>
           ) : (
