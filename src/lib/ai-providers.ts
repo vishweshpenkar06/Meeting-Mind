@@ -328,56 +328,122 @@ export interface DiarizedSegment {
   text: string;
 }
 
-export async function diarizeTranscript(transcript: string): Promise<DiarizedSegment[]> {
-  const providers = makeProviders();
-  if (providers.length === 0 || transcript.length < 50) {
-    return [{ speaker: "Speaker", text: transcript }];
+function heuristicDiarize(transcript: string): DiarizedSegment[] {
+  const paragraphs = transcript
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  if (paragraphs.length <= 1) {
+    const sentences = transcript
+      .split(/(?<=[.!?])\s+(?=[A-Z"']|I'm|I think|I agree|I disagree|Yes|No|But|However|So|Well|Yeah|Okay|Right|Actually|See|Also|Furthermore|Additionally)/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 15);
+
+    if (sentences.length <= 1) {
+      return [{ speaker: "Speaker A", text: transcript }];
+    }
+
+    const segs: DiarizedSegment[] = [];
+    let buf = sentences[0];
+    let idx = 0;
+    const names = ["Speaker A", "Speaker B", "Speaker C", "Speaker D", "Speaker E", "Speaker F"];
+
+    for (let i = 1; i < sentences.length; i++) {
+      if (i % 3 === 0 || /^(Yes|No|But|However|So|Well|I think|I agree|I disagree|Actually|Right|See|Also|Thank|Thanks)/i.test(sentences[i])) {
+        segs.push({ speaker: names[idx % 2], text: buf });
+        idx++;
+        buf = sentences[i];
+      } else {
+        buf += " " + sentences[i];
+      }
+    }
+    segs.push({ speaker: names[idx % 2], text: buf });
+    return segs;
   }
 
-  const config = providers[0];
-  try {
-    const openai = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+  const segs: DiarizedSegment[] = [];
+  let idx = 0;
+  const names = ["Speaker A", "Speaker B", "Speaker C", "Speaker D", "Speaker E", "Speaker F"];
 
-    const completion = await openai.chat.completions.create({
-      model: config.model,
-      messages: [
-        {
-          role: "system",
-          content: `You are a transcript analyst. Your job is to identify different speakers in a meeting transcript and label each segment.
+  for (const para of paragraphs) {
+    segs.push({ speaker: names[idx % 2], text: para });
+    idx++;
+  }
+
+  return segs;
+}
+
+const DIARIZATION_SYSTEM_PROMPT = `You are a transcript analyst. Your job is to identify different speakers in a meeting transcript and label each segment.
 
 Rules:
 - Assign speaker labels: "Speaker A", "Speaker B", "Speaker C", etc.
 - Each time the speaker changes, start a new segment
 - Keep the original text exactly as-is, just add speaker labels
 - If you cannot determine speaker changes, return the entire text as one segment with "Speaker A"
-- Return ONLY valid JSON array, no explanation
+- Return ONLY valid JSON, no explanation
 
 Return format:
-[{"speaker": "Speaker A", "text": "..."}, {"speaker": "Speaker B", "text": "..."}]`
-        },
-        {
-          role: "user",
-          content: `Diarize this transcript:\n\n${transcript.slice(0, 12000)}`
-        }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
+{"segments": [{"speaker": "Speaker A", "text": "..."}, {"speaker": "Speaker B", "text": "..."}]}`;
 
-    const content = completion.choices[0]?.message?.content;
-    if (!content) return [{ speaker: "Speaker", text: transcript }];
-
-    const parsed = JSON.parse(content) as { segments?: DiarizedSegment[] } | DiarizedSegment[];
-    const segments = Array.isArray(parsed) ? parsed : parsed.segments;
-
-    if (Array.isArray(segments) && segments.length > 0 && segments[0].speaker && segments[0].text) {
-      return segments;
-    }
-    return [{ speaker: "Speaker", text: transcript }];
-  } catch (err) {
-    console.warn("Diarization failed, returning single speaker:", err);
-    return [{ speaker: "Speaker", text: transcript }];
+export async function diarizeTranscript(transcript: string): Promise<DiarizedSegment[]> {
+  if (transcript.length < 50) {
+    return [{ speaker: "Speaker A", text: transcript }];
   }
+
+  const providers = makeProviders();
+  const errors: string[] = [];
+
+  for (const config of providers) {
+    try {
+      const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+      const truncatedTranscript = transcript.length > 12000 ? transcript.slice(0, 12000) + "\n\n[Transcript truncated]" : transcript;
+
+      const completion = await client.chat.completions.create({
+        model: config.model,
+        messages: [
+          { role: "system", content: DIARIZATION_SYSTEM_PROMPT },
+          { role: "user", content: `Diarize this transcript:\n\n${truncatedTranscript}` },
+        ],
+        temperature: 0.1,
+      });
+
+      const content = completion.choices[0]?.message?.content;
+      if (!content) {
+        errors.push(`${config.name}: empty response`);
+        continue;
+      }
+
+      let parsed: unknown;
+      try {
+        const jsonMatch = content.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+        parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content);
+      } catch {
+        errors.push(`${config.name}: invalid JSON`);
+        continue;
+      }
+
+      let segments: DiarizedSegment[] = [];
+      if (Array.isArray(parsed)) {
+        segments = parsed;
+      } else if (parsed && typeof parsed === "object" && "segments" in parsed && Array.isArray((parsed as { segments: unknown }).segments)) {
+        segments = (parsed as { segments: DiarizedSegment[] }).segments;
+      }
+
+      if (segments.length > 0 && segments[0].speaker && segments[0].text) {
+        console.log(`Diarization succeeded with ${config.name}: ${segments.length} segments`);
+        return segments;
+      }
+      errors.push(`${config.name}: invalid segment format`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown";
+      errors.push(`${config.name}: ${msg}`);
+      console.warn(`Diarization provider ${config.name} failed:`, msg);
+    }
+  }
+
+  console.warn(`All diarization providers failed, using heuristic. Errors: ${errors.join("; ")}`);
+  return heuristicDiarize(transcript);
 }
 
 export interface BriefingResult {

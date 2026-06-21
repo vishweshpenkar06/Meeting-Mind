@@ -81,6 +81,7 @@ export default function MeetingPage() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"notes" | "actions" | "transcript">("notes");
   const [isDiarizing, setIsDiarizing] = useState(false);
+  const [diarizationAttempted, setDiarizationAttempted] = useState(false);
 
   const fetchMeeting = useCallback(async () => {
     try {
@@ -156,9 +157,11 @@ export default function MeetingPage() {
       meeting.raw_transcript &&
       meeting.raw_transcript.length > 50 &&
       (!meeting.transcript_segments || meeting.transcript_segments.length === 0) &&
-      !isDiarizing
+      !isDiarizing &&
+      !diarizationAttempted
     ) {
       setIsDiarizing(true);
+      setDiarizationAttempted(true);
       fetch(`/api/meetings/${params.id}/diarize`, { method: "POST" })
         .then(async (res) => {
           if (res.ok) {
@@ -171,7 +174,7 @@ export default function MeetingPage() {
         .catch((err) => console.error("Diarization failed:", err))
         .finally(() => setIsDiarizing(false));
     }
-  }, [activeTab, meeting, params.id, isDiarizing]);
+  }, [activeTab, meeting, params.id, isDiarizing, diarizationAttempted]);
 
   const toggleItem = async (actionItemId: string) => {
     if (!meeting || toggling) return;
@@ -670,7 +673,7 @@ export default function MeetingPage() {
           )}
           {meeting.raw_transcript && meeting.raw_transcript.length > 100 ? (
             <div className="bg-bg-surface border border-border-subtle rounded-2xl p-5">
-              {meeting.transcript_segments && meeting.transcript_segments.length > 0 ? (
+              {meeting.transcript_segments && meeting.transcript_segments.length > 1 ? (
                 <InteractiveTranscript segments={meeting.transcript_segments} />
               ) : isDiarizing ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
