@@ -40,12 +40,14 @@ export async function GET(
     let segments: unknown[] = [];
 
     try {
-      const { data } = await supabase.from("action_items").select("*").eq("meeting_id", id);
+      const { data, error: actionErr } = await supabase.from("action_items").select("*").eq("meeting_id", id);
+      if (actionErr) console.warn("action_items query failed:", actionErr.message);
       actionItems = data || [];
-    } catch { /* table may not exist */ }
+    } catch (e) { console.warn("action_items table may not exist:", e); }
 
     try {
-      const { data } = await supabase.from("key_decisions").select("*").eq("meeting_id", id);
+      const { data, error: decisionErr } = await supabase.from("key_decisions").select("*").eq("meeting_id", id);
+      if (decisionErr) console.warn("key_decisions query failed:", decisionErr.message);
       keyDecisions = (data || []).map((d: Record<string, unknown>) => ({
         id: d.id,
         decision_text: typeof d.decision_text === "string"
@@ -54,10 +56,11 @@ export async function GET(
             ? (d.decision_text as { decision?: string }).decision || JSON.stringify(d.decision_text)
             : String(d.decision_text || ""),
       }));
-    } catch { /* table may not exist */ }
+    } catch (e) { console.warn("key_decisions table may not exist:", e); }
 
     try {
-      const { data: notes } = await supabase.from("meeting_notes").select("section, content").eq("meeting_id", id);
+      const { data: notes, error: notesErr } = await supabase.from("meeting_notes").select("section, content").eq("meeting_id", id);
+      if (notesErr) console.warn("meeting_notes query failed:", notesErr.message);
       if (notes) {
         const kt = notes.find((n) => n.section === "keyTopics");
         const r = notes.find((n) => n.section === "risks");
@@ -66,12 +69,13 @@ export async function GET(
         if (r) risks = JSON.parse(r.content);
         if (fu) followUps = JSON.parse(fu.content);
       }
-    } catch { /* table may not exist */ }
+    } catch (e) { console.warn("meeting_notes table may not exist:", e); }
 
     try {
-      const { data } = await supabase.from("transcript_segments").select("*").eq("meeting_id", id).order("created_at", { ascending: true });
+      const { data, error: segErr } = await supabase.from("transcript_segments").select("*").eq("meeting_id", id).order("created_at", { ascending: true });
+      if (segErr) console.warn("transcript_segments query failed:", segErr.message);
       segments = data || [];
-    } catch { /* table may not exist */ }
+    } catch (e) { console.warn("transcript_segments table may not exist:", e); }
 
     return NextResponse.json({
       ...meeting,
@@ -163,6 +167,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    console.error("Error deleting meeting:", err);
     return NextResponse.json({ error: "Failed to delete meeting" }, { status: 500 });
   }
 }
