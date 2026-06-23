@@ -18,7 +18,7 @@ describe("templates", () => {
     expect(template).toBeDefined();
     expect(template.name).toBe("standup");
     expect(template.displayName).toBe("Daily Standup");
-    expect(template.aiPromptContext).toContain("standup");
+    expect(template.aiPromptContext).toContain("STANDUP");
   });
 
   it("returns undefined for unknown template name", () => {
@@ -51,9 +51,17 @@ describe("templates", () => {
     }
   });
 
-  it("each template has agendaPrompt", () => {
+  it("each template has sampleAgenda", () => {
     for (const template of DEFAULT_TEMPLATES) {
-      expect(template.agendaPrompt).toBeTruthy();
+      expect(template.sampleAgenda).toBeTruthy();
+      expect(template.sampleAgenda!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("each template has sampleBriefing", () => {
+    for (const template of DEFAULT_TEMPLATES) {
+      expect(template.sampleBriefing).toBeTruthy();
+      expect(template.sampleBriefing!.contextSummary).toBeTruthy();
     }
   });
 });

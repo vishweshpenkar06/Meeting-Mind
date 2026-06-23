@@ -216,32 +216,109 @@ export default function NewMeetingPage() {
     if (!name) {
       setSelectedTemplate(null);
       setBriefing(null);
+      setAgendaItems([]);
       return;
     }
     setSelectedTemplate(name);
-    setAgendaItems([]);
-    setLoadingAgenda(true);
-    setBriefing(null);
+
+    const sampleAgendas: Record<string, string[]> = {
+      general: [
+        "Review action items from last meeting",
+        "Discuss current project status",
+        "Address blockers and dependencies",
+        "Plan next steps and assignments",
+      ],
+      standup: [
+        "[Alice] What did you accomplish yesterday?",
+        "[Bob] What will you work on today?",
+        "[Carol] Any blockers or impediments?",
+      ],
+      retro: [
+        "Celebrate wins from this sprint",
+        "Identify what slowed us down",
+        "Propose process improvements",
+        "Define action items for next sprint",
+      ],
+      "one-on-one": [
+        "Personal check-in and mood",
+        "Recent accomplishments and feedback",
+        "Career goals and growth areas",
+        "Support needed from manager",
+      ],
+      "client-call": [
+        "Review current status and progress",
+        "Discuss client requirements and feedback",
+        "Confirm decisions and approvals",
+        "Define next steps and deliverables",
+      ],
+      brainstorm: [
+        "Define the problem or opportunity",
+        "Generate ideas freely (no judgment)",
+        "Vote on top ideas and assign owners",
+      ],
+    };
+
+    const sampleBriefings: Record<string, { contextSummary: string; pendingItems: string[]; suggestedTopics: string[]; risks: string[] }> = {
+      general: {
+        contextSummary: "Review recent meeting outcomes and pending action items to prepare for today's discussion.",
+        pendingItems: ["Review open action items from last 3 meetings", "Check sprint progress against goals"],
+        suggestedTopics: ["Project status update", "Blocker resolution", "Resource allocation"],
+        risks: ["Missed deadlines may impact timeline"],
+      },
+      standup: {
+        contextSummary: "Quick sync to align on daily priorities and identify blockers early.",
+        pendingItems: ["Review yesterday's commitments", "Check on in-progress tasks"],
+        suggestedTopics: ["Yesterday's accomplishments", "Today's priorities", "Current blockers"],
+        risks: ["Unreported blockers may delay sprint goals"],
+      },
+      retro: {
+        contextSummary: "Reflect on the sprint to identify process improvements and celebrate wins.",
+        pendingItems: ["Gather team feedback on last sprint", "Review velocity trends"],
+        suggestedTopics: ["Sprint velocity review", "Process bottlenecks", "Team morale check"],
+        risks: ["Recurring issues may indicate systemic problems"],
+      },
+      "one-on-one": {
+        contextSummary: "Prepare for a supportive, growth-focused conversation.",
+        pendingItems: ["Review last 1:1 action items", "Check on career goal progress"],
+        suggestedTopics: ["Well-being check-in", "Skill development", "Project interests"],
+        risks: ["Unaddressed concerns may affect retention"],
+      },
+      "client-call": {
+        contextSummary: "Prepare for client-facing discussion with focus on deliverables and commitments.",
+        pendingItems: ["Review open deliverables", "Check pending client approvals"],
+        suggestedTopics: ["Project status update", "Client feedback review", "Timeline confirmation"],
+        risks: ["Scope creep may affect deadline", "Client expectations may need realignment"],
+      },
+      brainstorm: {
+        contextSummary: "Prepare for creative ideation session focused on generating diverse solutions.",
+        pendingItems: ["Review previous brainstorm outcomes", "Gather research on topic"],
+        suggestedTopics: ["Problem framing", "Competitive analysis", "User needs exploration"],
+        risks: ["Groupthink may limit idea diversity"],
+      },
+    };
+
+    setAgendaItems(sampleAgendas[name] || sampleAgendas.general);
+    setBriefing(sampleBriefings[name] || sampleBriefings.general);
+    setLoadingAgenda(false);
+    setLoadingBriefing(false);
+
     fetch("/api/meetings/generate-agenda", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ templateName: name }),
     })
       .then((res) => res.json())
-      .then((data) => { setAgendaItems(data.items || []); })
-      .catch(() => {})
-      .finally(() => setLoadingAgenda(false));
+      .then((data) => { if (data.items?.length > 0) setAgendaItems(data.items); })
+      .catch(() => {});
 
-    setLoadingBriefing(true);
     fetch("/api/meetings/briefing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ templateName: name }),
     })
       .then((res) => res.json())
-      .then((data) => { setBriefing(data); })
-      .catch(() => {})
-      .finally(() => setLoadingBriefing(false));
+      .then((data) => { if (data?.contextSummary) setBriefing(data); })
+      .catch(() => {});
   };
 
   return (
