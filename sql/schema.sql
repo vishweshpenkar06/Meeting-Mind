@@ -97,6 +97,7 @@ alter table public.meetings add column if not exists duration_seconds int defaul
 alter table public.meetings add column if not exists meeting_type text default 'general';
 alter table public.meetings add column if not exists analysis_status text default 'completed';
 alter table public.meetings add column if not exists template_id uuid references public.meeting_templates(id);
+alter table public.meetings add column if not exists template_name text;
 
 -- === FULL-TEXT SEARCH on meetings ===
 do $$

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { processMeetingWithAI, diarizeTranscript } from "@/lib/ai-providers";
 import { embed } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { getTemplate } from "@/lib/templates";
 
 export async function POST(
   _request: Request,
@@ -36,7 +37,8 @@ export async function POST(
       return NextResponse.json({ ok: true, alreadyAnalyzed: true });
     }
 
-    const result = await processMeetingWithAI(meeting.raw_transcript || "");
+    const templateContext = getTemplate(meeting.template_name || undefined)?.aiPromptContext;
+    const result = await processMeetingWithAI(meeting.raw_transcript || "", templateContext);
 
     const { error: updateError } = await supabase
       .from("meetings")

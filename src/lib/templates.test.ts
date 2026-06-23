@@ -44,4 +44,16 @@ describe("templates", () => {
       expect(template.description).toBeTruthy();
     }
   });
+
+  it("each template has aiPromptContext", () => {
+    for (const template of DEFAULT_TEMPLATES) {
+      expect(template.aiPromptContext).toBeTruthy();
+    }
+  });
+
+  it("each template has agendaPrompt", () => {
+    for (const template of DEFAULT_TEMPLATES) {
+      expect(template.agendaPrompt).toBeTruthy();
+    }
+  });
 });

@@ -682,10 +682,18 @@ export default function MeetingPage() {
                   <p className="text-text-muted text-xs">This may take a moment for long transcripts</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <p className="text-text-secondary text-sm leading-relaxed whitespace-pre-wrap font-[family:var(--font-jetbrains)]" style={{ fontSize: "13px" }}>
-                    {meeting.raw_transcript}
-                  </p>
+                <div className="space-y-2">
+                  {meeting.raw_transcript
+                    .split(/(?<=[.!?])\s+/)
+                    .filter((s) => s.trim().length > 5)
+                    .map((sentence, i) => (
+                      <div key={i} className="flex items-start gap-3">
+                        <span className="text-accent-primary text-xs mt-1.5 flex-shrink-0">•</span>
+                        <span className="text-text-secondary text-[13px] leading-relaxed font-[family:var(--font-jetbrains)]">
+                          {sentence.trim()}
+                        </span>
+                      </div>
+                    ))}
                 </div>
               )}
             </div>

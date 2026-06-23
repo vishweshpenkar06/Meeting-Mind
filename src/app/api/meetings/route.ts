@@ -274,6 +274,7 @@ export async function POST(request: Request) {
         share_token: shareToken,
         is_public: false,
         audio_url: audioUrl || null,
+        template_name: templateName || null,
       })
       .select()
       .single();

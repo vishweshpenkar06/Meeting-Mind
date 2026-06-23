@@ -38,7 +38,10 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/meeting") ||
-    (pathname.startsWith("/api/meetings") && !pathname.startsWith("/api/meetings/analyze"))
+    (pathname.startsWith("/api/meetings") &&
+      !pathname.startsWith("/api/meetings/analyze") &&
+      !pathname.startsWith("/api/meetings/generate-agenda") &&
+      !pathname.startsWith("/api/meetings/briefing"))
   ) {
     if (!user) {
       const loginUrl = new URL("/login", request.url);
