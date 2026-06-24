@@ -22,10 +22,11 @@
   --color-error-muted: #2D0F0F;
   --gradient-hero: linear-gradient(135deg, #4F8EF7 0%, #8B5CF6 100%);
   --gradient-shimmer: linear-gradient(90deg, transparent 0%, rgba(79, 142, 247, 0.08) 50%, transparent 100%);
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(79,142,247,0.08);
-  --shadow-btn-primary: 0 0 20px rgba(79,142,247,0.25);
-  --font-display: var(--font-syne);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
+  --shadow-glow: 0 0 24px rgba(79,142,247,0.15);
+  --font-display: var(--font-space-grotesk);
   --font-body: var(--font-dm-sans);
   --font-mono: var(--font-jetbrains);
   --content-max-width: 720px;
@@ -41,17 +42,10 @@ body {
   min-height: 100vh;
 }
 
-/* Top accent gradient line */
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, #4F8EF7 30%, #8B5CF6 70%, transparent 100%);
-  z-index: 9999;
-  opacity: 0.5;
+/* Dot grid pattern for backgrounds */
+.dot-grid {
+  background-image: radial-gradient(circle, #1E2D40 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 /* Custom scrollbar */
@@ -79,12 +73,57 @@ body::before {
 :focus-visible {
   outline: 2px solid #4F8EF7;
   outline-offset: 2px;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 /* Smooth transitions */
 * {
-  transition-property: border-color, background-color, box-shadow, transform;
-  transition-timing-function: ease;
-  transition-duration: 0ms;
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Toast slide-in animation */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+/* Modal fade-in */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Subtle float animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* Pulse dot for recording */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }

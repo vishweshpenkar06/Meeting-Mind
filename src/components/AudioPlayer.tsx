@@ -73,20 +73,20 @@ export default function AudioPlayer({ src, segments, onTimeUpdate }: AudioPlayer
   const progress = duration ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-2xl p-4">
+    <div className="bg-bg-surface border border-border-subtle rounded-xl p-4">
       <audio ref={audioRef} src={src} preload="metadata" />
 
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-3">
         <button
           onClick={togglePlay}
-          className="w-10 h-10 rounded-full bg-accent-primary flex items-center justify-center text-white hover:bg-accent-primary-hover transition-colors flex-shrink-0"
+          className="w-8 h-8 rounded-full bg-accent-primary flex items-center justify-center text-white hover:bg-accent-primary-hover transition-colors flex-shrink-0"
         >
-          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+          {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
         </button>
 
         <div className="flex-1 min-w-0">
           <div
-            className="h-2 bg-bg-elevated rounded-full cursor-pointer overflow-hidden"
+            className="h-1 bg-bg-elevated rounded-full cursor-pointer overflow-hidden"
             onClick={seek}
           >
             <div
@@ -97,7 +97,7 @@ export default function AudioPlayer({ src, segments, onTimeUpdate }: AudioPlayer
               }}
             />
           </div>
-          <div className="flex justify-between mt-1">
+          <div className="flex justify-between mt-1.5">
             <span className="text-[11px] text-text-muted font-[family:var(--font-jetbrains)]">
               {formatTime(currentTime)}
             </span>
@@ -109,9 +109,9 @@ export default function AudioPlayer({ src, segments, onTimeUpdate }: AudioPlayer
 
         <button
           onClick={toggleMute}
-          className="p-2 text-text-muted hover:text-text-primary transition-colors"
+          className="p-1.5 text-text-muted hover:text-text-primary transition-colors"
         >
-          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
         </button>
       </div>
 
@@ -123,7 +123,7 @@ export default function AudioPlayer({ src, segments, onTimeUpdate }: AudioPlayer
             return (
               <div
                 key={i}
-                className={`text-xs px-3 py-2 rounded-lg transition-all duration-200 ${
+                className={`text-xs px-3 py-2 rounded-lg transition-colors duration-100 ${
                   isActive
                     ? "bg-accent-primary/10 border border-accent-primary/20"
                     : "text-text-muted"

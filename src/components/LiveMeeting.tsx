@@ -238,16 +238,14 @@ export default function LiveMeetingPage() {
         </div>
         <button
           onClick={isRecording ? stopMeeting : startMeeting}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-            isRecording
-              ? "bg-error/20 text-error border border-error/30 hover:bg-error/30"
-              : "bg-accent-primary text-text-inverse hover:bg-accent-primary-hover"
-          }`}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors bg-bg-elevated border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-default"
         >
           {isRecording ? (
             <>
-              <Square className="w-3.5 h-3.5" />
-              Stop & Analyze
+              <div className="relative">
+                <div className="w-2 h-2 rounded-full bg-error" style={{ animation: "pulse-dot 1.5s ease-in-out infinite" }} />
+              </div>
+              Stop Recording
             </>
           ) : (
             <>

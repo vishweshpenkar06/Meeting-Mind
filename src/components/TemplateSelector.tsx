@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { DEFAULT_TEMPLATES, type MeetingTemplate } from "@/lib/templates";
 
 interface TemplateSelectorProps {
@@ -13,24 +12,24 @@ export default function TemplateSelector({ selectedTemplate, onSelect }: Templat
 
   return (
     <div className="mb-6">
-      <label className="block text-sm font-medium text-text-secondary mb-2">
+      <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-3">
         Meeting Type
       </label>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-none">
         {templates.map((t) => {
           const isSelected = selectedTemplate === t.name;
           return (
             <button
               key={t.name}
               onClick={() => onSelect(isSelected ? null : t.name)}
-              className={`text-left px-4 py-3 rounded-xl border transition-all duration-200 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-150 ${
                 isSelected
-                  ? "border-accent-primary bg-[rgba(79,142,247,0.08)]"
-                  : "border-border-subtle bg-bg-surface hover:border-border-default"
+                  ? "bg-accent-primary text-white"
+                  : "bg-bg-elevated text-text-secondary border border-border-subtle hover:border-border-default hover:text-text-primary"
               }`}
             >
-              <span className="text-lg mb-1 block">{t.icon}</span>
-              <span className="text-sm font-semibold text-text-primary">{t.displayName}</span>
+              <span className="text-base">{t.icon}</span>
+              <span>{t.displayName}</span>
             </button>
           );
         })}

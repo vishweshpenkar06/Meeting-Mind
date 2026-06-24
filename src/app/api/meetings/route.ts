@@ -264,20 +264,33 @@ export async function POST(request: Request) {
       : "";
     const defaultTitle = title || inferredTitle || "Processing Meeting...";
 
-    const { data: meeting, error: meetingError } = await supabase
+    const meetingData: Record<string, unknown> = {
+      user_id: user.id,
+      title: defaultTitle,
+      raw_transcript: effectiveTranscript,
+      summary: "",
+      share_token: shareToken,
+      is_public: false,
+      audio_url: audioUrl || null,
+    };
+    if (templateName) meetingData.template_name = templateName;
+
+    let { data: meeting, error: meetingError } = await supabase
       .from("meetings")
-      .insert({
-        user_id: user.id,
-        title: defaultTitle,
-        raw_transcript: effectiveTranscript,
-        summary: "",
-        share_token: shareToken,
-        is_public: false,
-        audio_url: audioUrl || null,
-        template_name: templateName || null,
-      })
+      .insert(meetingData)
       .select()
       .single();
+
+    if (meetingError && meetingError.message.includes("template_name")) {
+      delete meetingData.template_name;
+      const retry = await supabase
+        .from("meetings")
+        .insert(meetingData)
+        .select()
+        .single();
+      meeting = retry.data;
+      meetingError = retry.error;
+    }
 
     if (meetingError) {
       return NextResponse.json({ error: meetingError.message }, { status: 500 });
