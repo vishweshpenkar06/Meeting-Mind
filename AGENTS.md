@@ -111,6 +111,15 @@ GROQ_MODEL=                      # Override transcription model
 - Error handling: Wrap external calls in try/catch, log warnings for non-blocking failures
 - No comments in code unless explicitly asked
 
+## Design System
+
+- **Fonts**: Space Grotesk (headings), DM Sans (body), JetBrains Mono (code/timestamps)
+- **Border radius**: Use `rounded-xl` (12px) for cards, inputs, buttons. Only `rounded-full` for badges/avatars
+- **Shadows**: Use CSS vars `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-glow`
+- **Colors**: Always use CSS variables (`--color-*`), never inline hex values
+- **Transitions**: Use `transition-colors duration-150` for snappy feel
+- **Animation**: Use `cubic-bezier(0.25, 0.46, 0.45, 0.94)` timing function
+
 ## Testing
 
 Use Vitest for unit tests. Place test files adjacent to source files as `*.test.ts` or `*.test.tsx`.

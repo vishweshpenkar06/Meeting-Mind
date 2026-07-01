@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, type ChangeEvent } from "react";
+import { useState, useRef, type ChangeEvent } from "react";
 import {
   ArrowLeft,
   Upload,
@@ -12,11 +12,9 @@ import {
   CircleDashed,
   Circle,
   Mic,
-  Lightbulb,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { createClient, getUser } from "@/lib/supabase/client";
 import TemplateSelector from "@/components/TemplateSelector";
 
 type DemoResult = {
@@ -28,7 +26,6 @@ type DemoResult = {
 
 export default function NewMeetingPage() {
   const router = useRouter();
-  const supabase = createClient();
   const [title, setTitle] = useState("");
   const [transcript, setTranscript] = useState("");
   const [fileName, setFileName] = useState("");
@@ -41,8 +38,6 @@ export default function NewMeetingPage() {
   const [inputMode, setInputMode] = useState<"upload" | "paste">("paste");
   const [uploadKind, setUploadKind] = useState<"audio" | "screen">("audio");
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
-  const [user, setUser] = useState<{ id: string } | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [agendaItems, setAgendaItems] = useState<string[]>([]);
   const [loadingAgenda, setLoadingAgenda] = useState(false);
@@ -61,12 +56,6 @@ export default function NewMeetingPage() {
 
   const isVideoFile = (file: File) =>
     file.type.startsWith("video/") || ["mp4", "mov", "mkv", "avi", "webm", "m4v"].some((ext) => file.name.toLowerCase().endsWith(`.${ext}`));
-
-  useEffect(() => {
-    getUser().then(({ user }) => {
-      if (user) setUser({ id: user.id });
-    });
-  }, []);
 
   const steps = [
     "Preparing your meeting",
@@ -185,8 +174,6 @@ export default function NewMeetingPage() {
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
-      setRecordingStartTime(new Date());
-
       recorder.ondataavailable = (e: { data: Blob }) => {
         chunksRef.current.push(e.data);
       };
@@ -194,7 +181,6 @@ export default function NewMeetingPage() {
       recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         handleFileSelect(new File([blob], "recording.webm", { type: "audio/webm" }));
-        setRecordingStartTime(null);
         stream.getTracks().forEach((t) => t.stop());
       };
 
@@ -358,28 +344,25 @@ export default function NewMeetingPage() {
 
       {/* Suggested Agenda */}
       {loadingAgenda && (
-        <div className="mb-6 bg-bg-surface border border-border-subtle rounded-xl px-5 py-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="mb-6 bg-bg-elevated/50 border border-border-subtle rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2">
             <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin" />
-            <span className="text-text-primary text-sm font-medium">Generating agenda...</span>
+            <span className="text-text-secondary text-sm">Generating agenda...</span>
           </div>
         </div>
       )}
       {agendaItems.length > 0 && !loadingAgenda && (
-        <div className="mb-6 bg-bg-surface border border-accent-purple-muted/50 rounded-xl px-5 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Lightbulb className="w-4 h-4 text-warning" />
-              <span className="text-text-primary text-sm font-semibold">Suggested Agenda</span>
-            </div>
+        <div className="mb-6 bg-bg-elevated/50 border-l-2 border-l-accent-primary border border-border-subtle rounded-xl px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Agenda</span>
             <button onClick={() => setAgendaItems([])} className="text-text-muted hover:text-text-primary">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-          <ol className="flex flex-col gap-2">
+          <ol className="flex flex-col gap-1.5">
             {agendaItems.map((item, i) => (
-              <li key={i} className="text-sm text-text-secondary flex gap-3">
-                <span className="text-accent-primary font-bold flex-shrink-0">{i + 1}.</span>
+              <li key={i} className="text-sm text-text-secondary flex gap-2">
+                <span className="text-accent-primary font-medium text-xs mt-0.5">{i + 1}.</span>
                 <span>{item}</span>
               </li>
             ))}
@@ -389,111 +372,98 @@ export default function NewMeetingPage() {
 
       {/* Pre-Meeting Briefing */}
       {loadingBriefing && (
-        <div className="mb-6 bg-bg-surface border border-border-subtle rounded-xl px-5 py-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="mb-6 bg-bg-elevated/50 border border-border-subtle rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2">
             <Loader2 className="w-3.5 h-3.5 text-accent-purple animate-spin" />
-            <span className="text-text-primary text-sm font-medium">Generating briefing...</span>
+            <span className="text-text-secondary text-sm">Generating briefing...</span>
           </div>
         </div>
       )}
       {briefing && !loadingBriefing && (
-        <div className="mb-6 bg-bg-surface border border-accent-purple/30 rounded-xl px-5 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Lightbulb className="w-4 h-4 text-accent-purple" />
-              <span className="text-text-primary text-sm font-semibold">Pre-Meeting Briefing</span>
-            </div>
+        <div className="mb-6 bg-bg-elevated/50 border-l-2 border-l-accent-purple border border-border-subtle rounded-xl px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Briefing</span>
             <button onClick={() => setBriefing(null)} className="text-text-muted hover:text-text-primary">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
           {briefing.contextSummary && (
-            <p className="text-sm text-text-secondary mb-3">{briefing.contextSummary}</p>
+            <p className="text-sm text-text-secondary mb-2">{briefing.contextSummary}</p>
           )}
           {briefing.pendingItems.length > 0 && (
             <div className="mb-2">
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Pending from Past Meetings</p>
-              <ul className="space-y-1">
+              <p className="text-[11px] font-medium text-text-muted mb-1">Pending</p>
+              <ul className="space-y-0.5">
                 {briefing.pendingItems.map((item, i) => (
-                  <li key={i} className="text-sm text-text-secondary flex gap-2">
-                    <span className="text-warning">•</span> {item}
-                  </li>
+                  <li key={i} className="text-xs text-text-secondary">- {item}</li>
                 ))}
               </ul>
             </div>
           )}
           {briefing.suggestedTopics.length > 0 && (
-            <div className="mb-2">
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Suggested Topics</p>
-              <div className="flex flex-wrap gap-2">
-                {briefing.suggestedTopics.map((topic, i) => (
-                  <span key={i} className="text-xs bg-bg-elevated text-text-secondary px-2.5 py-1 rounded-full border border-border-subtle">
-                    {topic}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {briefing.risks.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Risks to Watch</p>
-              <ul className="space-y-1">
-                {briefing.risks.map((risk, i) => (
-                  <li key={i} className="text-sm text-warning flex gap-2">
-                    <span>⚠</span> {risk}
-                  </li>
-                ))}
-              </ul>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {briefing.suggestedTopics.map((topic, i) => (
+                <span key={i} className="text-[11px] bg-bg-elevated text-text-secondary px-2 py-0.5 rounded-full">
+                  {topic}
+                </span>
+              ))}
             </div>
           )}
         </div>
       )}
 
       {/* Meeting Title Input */}
-      <label className="block text-sm font-medium text-text-secondary mb-2">
-        Meeting Title (optional)
+      <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
+        Title
       </label>
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder={"e.g. Product Sync · April 4"}
-        className="w-full bg-bg-surface border border-border-default rounded-[10px] px-4 py-3 text-text-primary text-[14px] placeholder:text-text-muted mb-4 transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_3px_rgba(79,142,247,0.15)]"
+        placeholder="e.g. Product Sync"
+        className="w-full bg-bg-elevated/50 border border-border-subtle rounded-xl px-4 py-2.5 text-text-primary text-sm placeholder:text-text-muted mb-4 transition-colors focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_2px_rgba(79,142,247,0.1)]"
       />
 
       {/* Language Selector */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-text-secondary mb-2">
-          Transcription Language
+        <label className="block text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
+          Language
         </label>
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          className="w-full bg-bg-surface border border-border-default rounded-[10px] px-4 py-3 text-text-primary text-[14px] transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_3px_rgba(79,142,247,0.15)]"
-        >
-          <option value="auto">Auto-detect</option>
-          <option value="en">English</option>
-          <option value="es">Spanish</option>
-          <option value="fr">French</option>
-          <option value="de">German</option>
-          <option value="it">Italian</option>
-          <option value="pt">Portuguese</option>
-          <option value="nl">Dutch</option>
-          <option value="ja">Japanese</option>
-          <option value="ko">Korean</option>
-          <option value="zh">Chinese</option>
-          <option value="hi">Hindi</option>
-          <option value="ar">Arabic</option>
-          <option value="ru">Russian</option>
-          <option value="pl">Polish</option>
-          <option value="tr">Turkish</option>
-          <option value="vi">Vietnamese</option>
-          <option value="th">Thai</option>
-          <option value="sv">Swedish</option>
-          <option value="da">Danish</option>
-          <option value="fi">Finnish</option>
-          <option value="no">Norwegian</option>
-        </select>
+        <div className="relative">
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className="w-full appearance-none bg-bg-elevated/50 border border-border-subtle rounded-xl px-4 py-2.5 text-text-primary text-sm transition-colors focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_2px_rgba(79,142,247,0.1)] cursor-pointer"
+          >
+            <option value="auto">Auto-detect</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="nl">Dutch</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="zh">Chinese</option>
+            <option value="hi">Hindi</option>
+            <option value="ar">Arabic</option>
+            <option value="ru">Russian</option>
+            <option value="pl">Polish</option>
+            <option value="tr">Turkish</option>
+            <option value="vi">Vietnamese</option>
+            <option value="th">Thai</option>
+            <option value="sv">Swedish</option>
+            <option value="da">Danish</option>
+            <option value="fi">Finnish</option>
+            <option value="no">Norwegian</option>
+          </select>
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
       </div>
 
       {/* Input Mode Tabs */}
@@ -610,14 +580,19 @@ export default function NewMeetingPage() {
         <button
           onClick={isRecording ? stopRecording : startRecording}
           disabled={isProcessing}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-            isRecording
-              ? "bg-error/20 text-error border border-error/30 animate-pulse"
-              : "bg-bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-default"
-          }`}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors bg-bg-elevated/50 border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-default"
         >
-          <Mic className={`w-4 h-4 ${isRecording ? "animate-pulse" : ""}`} />
-          {isRecording ? "Recording... Click to Stop" : "Record Audio"}
+          {isRecording ? (
+            <>
+              <div className="w-2 h-2 rounded-full bg-error" style={{ animation: "pulse-dot 1.5s ease-in-out infinite" }} />
+              Stop Recording
+            </>
+          ) : (
+            <>
+              <Mic className="w-4 h-4" />
+              Record Audio
+            </>
+          )}
         </button>
       </div>
 
@@ -667,56 +642,52 @@ export default function NewMeetingPage() {
       <button
         onClick={handleProcess}
         disabled={!checkValid()}
-        className="w-full flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-primary-hover text-text-inverse text-[15px] font-semibold py-4 rounded-[10px] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{
-          ...(checkValid() && !isProcessing ? { boxShadow: "0 0 20px rgba(79,142,247,0.25)" } : {}),
-        }}
+        className="w-full flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-primary-hover text-text-inverse text-[14px] font-medium py-3.5 rounded-xl transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <Zap className="w-4 h-4" />
-        {isProcessing ? "Processing..." : "Process Meeting"}
+        {isProcessing ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Processing...
+          </>
+        ) : (
+          <>
+            <Zap className="w-4 h-4" />
+            Process Meeting
+          </>
+        )}
       </button>
 
       {/* Processing State */}
       {isProcessing && (
-        <div
-          className="mt-6 bg-bg-surface border border-success/30 rounded-[14px] px-6 py-8 relative overflow-hidden"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <Loader2 className="w-5 h-5 text-accent-primary animate-spin" />
-            <span className="text-text-primary font-semibold text-[15px]">
-              Analyzing your meeting...
-            </span>
+        <div className="mt-6 bg-bg-elevated/50 border border-border-subtle rounded-xl px-5 py-6">
+          <div className="flex items-center gap-3 mb-5">
+            <Loader2 className="w-4 h-4 text-accent-primary animate-spin" />
+            <span className="text-text-primary text-sm font-medium">Analyzing your meeting...</span>
           </div>
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             {steps.map((step, i) => (
               <div key={i} className="flex items-center gap-3">
                 {i < processingStep ? (
-                  <CheckCircle className="w-4 h-4 text-success flex-shrink-0" />
+                  <CheckCircle className="w-3.5 h-3.5 text-success flex-shrink-0" />
                 ) : i === processingStep ? (
-                  <CircleDashed className="w-4 h-4 text-accent-primary flex-shrink-0" style={{ animation: "pulse 1.5s infinite" }} />
+                  <CircleDashed className="w-3.5 h-3.5 text-accent-primary flex-shrink-0 animate-spin" />
                 ) : (
-                  <Circle className="w-4 h-4 text-text-muted/30 flex-shrink-0" />
+                  <Circle className="w-3.5 h-3.5 text-text-muted/30 flex-shrink-0" />
                 )}
-                <span
-                  className={`text-sm transition-colors ${
-                    i < processingStep
-                      ? "text-success"
-                      : i === processingStep
-                        ? "text-text-primary"
-                        : "text-text-muted"
-                  }`}
-                >
+                <span className={`text-xs transition-colors ${
+                  i < processingStep ? "text-success" : i === processingStep ? "text-text-primary" : "text-text-muted"
+                }`}>
                   {step}
                 </span>
               </div>
             ))}
           </div>
-          <div className="mt-6 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
+          <div className="mt-5 h-1 bg-bg-elevated rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-700 ease-out"
               style={{
-                width: `${(processingStep / (steps.length)) * 100}%`,
-                background: "linear-gradient(90deg, var(--color-accent-primary), var(--color-accent-purple))",
+                width: `${(processingStep / steps.length) * 100}%`,
+                background: "var(--gradient-hero)",
               }}
             />
           </div>
@@ -725,8 +696,8 @@ export default function NewMeetingPage() {
 
       {/* Help text */}
       {!isProcessing && (
-        <p className="text-text-muted text-xs text-center mt-8">
-          {"\u26A1"} AI processes your meeting in about 30 seconds
+        <p className="text-text-muted text-xs text-center mt-6">
+          Processing takes about 30 seconds
         </p>
       )}
 

@@ -2,8 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Mic, Square, Loader2, Zap } from "lucide-react";
-import { createClient, getUser } from "@/lib/supabase/client";
+import { ArrowLeft, Mic, Loader2, Zap } from "lucide-react";
 
 interface TranscriptSegment {
   id: string;
@@ -17,19 +16,12 @@ export default function LiveMeetingPage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [meetingId, setMeetingId] = useState<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const segmentsRef = useRef<TranscriptSegment[]>([]);
   const queueRef = useRef<Blob[]>([]);
   const isProcessingRef = useRef(false);
-
-  useEffect(() => {
-    getUser().then(({ user }) => {
-      if (user) setUserId(user.id);
-    });
-  }, []);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -116,7 +108,6 @@ export default function LiveMeetingPage() {
     let waited = 0;
     while (isProcessingRef.current && waited < 10000) {
       // wait up to 10s
-      // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 300));
       waited += 300;
     }
@@ -286,7 +277,7 @@ export default function LiveMeetingPage() {
       {isRecording && (
         <div className="mt-6 flex items-center justify-center gap-2 text-text-muted text-xs">
           <Zap className="w-3 h-3" />
-          <span>Real-time transcription powered by OpenAI Whisper</span>
+          <span>Real-time transcription powered by Groq Whisper</span>
         </div>
       )}
 

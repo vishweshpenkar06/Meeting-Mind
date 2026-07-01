@@ -73,11 +73,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ items: items.length > 0 ? items : sampleAgenda });
   } catch (err) {
     console.error("Agenda generation error:", err);
-    try {
-      const body = await request.json().catch(() => ({}));
-      return NextResponse.json({ items: getSampleAgenda(body.templateName || "general") });
-    } catch {
-      return NextResponse.json({ items: getSampleAgenda("general") });
-    }
+    const body = await request.clone().json().catch(() => ({})) as { templateName?: string };
+    return NextResponse.json({ items: getSampleAgenda(body?.templateName || "general") });
   }
 }

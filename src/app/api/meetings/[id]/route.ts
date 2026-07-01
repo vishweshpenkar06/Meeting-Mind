@@ -62,12 +62,16 @@ export async function GET(
       const { data: notes, error: notesErr } = await supabase.from("meeting_notes").select("section, content").eq("meeting_id", id);
       if (notesErr) console.warn("meeting_notes query failed:", notesErr.message);
       if (notes) {
-        const kt = notes.find((n) => n.section === "keyTopics");
-        const r = notes.find((n) => n.section === "risks");
-        const fu = notes.find((n) => n.section === "followUps");
-        if (kt) keyTopics = JSON.parse(kt.content);
-        if (r) risks = JSON.parse(r.content);
-        if (fu) followUps = JSON.parse(fu.content);
+        try {
+          const kt = notes.find((n) => n.section === "keyTopics");
+          const r = notes.find((n) => n.section === "risks");
+          const fu = notes.find((n) => n.section === "followUps");
+          if (kt) keyTopics = JSON.parse(kt.content);
+          if (r) risks = JSON.parse(r.content);
+          if (fu) followUps = JSON.parse(fu.content);
+        } catch {
+          console.warn("Failed to parse meeting_notes JSON content");
+        }
       }
     } catch (e) { console.warn("meeting_notes table may not exist:", e); }
 

@@ -31,27 +31,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-bg-base">
-      <nav className="flex items-center justify-between px-6 md:px-12 h-16 border-b border-border-subtle bg-bg-base/80 backdrop-blur-xl sticky top-0 z-40">
-        <a href="/dashboard" className="flex items-center gap-3">
+      <nav className="flex items-center justify-between px-6 h-14 border-b border-border-subtle bg-bg-base/80 backdrop-blur-xl sticky top-0 z-40">
+        <a href="/dashboard" className="flex items-center gap-2.5">
           <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-text-inverse font-bold text-sm"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-text-inverse font-bold text-xs"
             style={{ background: "var(--gradient-hero)" }}
           >
             M
           </div>
-          <span className="font-[family:var(--font-syne)] font-bold text-lg text-text-primary">
+          <span className="font-[family:var(--font-space-grotesk)] font-semibold text-sm text-text-primary">
             MeetingMind
           </span>
         </a>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {user && (
-            <span className="text-xs text-text-muted hidden md:block max-w-[200px] truncate">
+            <span className="text-[11px] text-text-muted hidden md:block max-w-[180px] truncate font-[family:var(--font-jetbrains)]">
               {user.email}
             </span>
           )}
           <button
             onClick={handleSignOut}
-            className="text-xs text-text-muted hover:text-text-primary transition-colors px-3 py-1.5 rounded-lg hover:bg-bg-elevated/50"
+            className="text-[11px] text-text-muted hover:text-text-primary transition-colors px-2.5 py-1 rounded-lg hover:bg-bg-elevated/50"
           >
             Sign out
           </button>

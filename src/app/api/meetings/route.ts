@@ -77,12 +77,23 @@ export async function GET(request: Request) {
       queryBuilder = queryBuilder.order("created_at", { ascending: false });
     }
 
-    // Also fetch overdue reminder count
-    const { data: overdueItems } = await supabase
-      .from("action_items")
+    const { data: userMeetingIds } = await supabase
+      .from("meetings")
       .select("id")
-      .eq("is_completed", false)
-      .lt("due_date", new Date().toISOString().split("T")[0]);
+      .eq("user_id", user.id);
+
+    const meetingIds = userMeetingIds?.map((m: { id: string }) => m.id) ?? [];
+
+    let overdueItems: { id: string }[] | null = null;
+    if (meetingIds.length > 0) {
+      const result = await supabase
+        .from("action_items")
+        .select("id")
+        .eq("is_completed", false)
+        .lt("due_date", new Date().toISOString().split("T")[0])
+        .in("meeting_id", meetingIds);
+      overdueItems = result.data;
+    }
 
     const { data: meetings, error } = await queryBuilder;
 
@@ -130,10 +141,7 @@ export async function POST(request: Request) {
     let transcript: string | undefined;
     let title: string | undefined;
     let audioUrl: string | undefined;
-    let templateId: string | undefined;
     let templateName: string | undefined;
-    let durationSeconds: number | undefined;
-    let meetingType: string | undefined;
     let language: string | undefined;
     let uploadedFile: File | null = null;
 
@@ -142,32 +150,23 @@ export async function POST(request: Request) {
       const transcriptValue = formData.get("transcript");
       const titleValue = formData.get("title");
       const audioUrlValue = formData.get("audioUrl");
-      const templateIdValue = formData.get("templateId");
       const templateNameValue = formData.get("templateName");
-      const durationSecondsValue = formData.get("durationSeconds");
-      const meetingTypeValue = formData.get("meetingType");
       const languageValue = formData.get("language");
       const fileValue = formData.get("file");
 
       transcript = typeof transcriptValue === "string" ? transcriptValue : undefined;
       title = typeof titleValue === "string" ? titleValue : undefined;
       audioUrl = typeof audioUrlValue === "string" ? audioUrlValue : undefined;
-      templateId = typeof templateIdValue === "string" ? templateIdValue : undefined;
       templateName = typeof templateNameValue === "string" ? templateNameValue : undefined;
-      durationSeconds = typeof durationSecondsValue === "string" && durationSecondsValue ? Number(durationSecondsValue) : undefined;
-      meetingType = typeof meetingTypeValue === "string" ? meetingTypeValue : undefined;
       language = typeof languageValue === "string" ? languageValue : undefined;
       uploadedFile = fileValue instanceof File ? fileValue : null;
     } else {
       const body = await request.json();
-      ({ transcript, title, audioUrl, templateId, templateName, durationSeconds, meetingType, language } = body as {
+      ({ transcript, title, audioUrl, templateName, language } = body as {
         transcript?: string;
         title?: string;
         audioUrl?: string;
-        templateId?: string;
         templateName?: string;
-        durationSeconds?: number;
-        meetingType?: string;
         language?: string;
       });
     }

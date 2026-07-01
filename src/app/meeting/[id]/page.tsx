@@ -6,8 +6,6 @@ import {
   ArrowLeft,
   Share2,
   Check,
-  Link,
-  FileDown,
   FileText,
   MoreHorizontal,
   Trash2,
@@ -19,7 +17,7 @@ import {
   Clipboard,
   Download,
 } from "lucide-react";
-import { exportToPDF, downloadAsText, downloadAsMarkdown, copyShareFormat } from "@/lib/exports";
+import { exportToPDF, downloadAsMarkdown, copyShareFormat } from "@/lib/exports";
 import AudioPlayer from "@/components/AudioPlayer";
 import InteractiveTranscript from "@/components/InteractiveTranscript";
 
@@ -216,10 +214,7 @@ export default function MeetingPage() {
       await fetchMeeting();
     }
 
-    const freshMeeting = await (await fetch(`/api/meetings/${meeting.id}`)).json();
-    setMeeting(freshMeeting);
-
-    const shareUrl = `${window.location.origin}/share/${freshMeeting.share_token || "..."}`;
+    const shareUrl = `${window.location.origin}/share/${meeting.share_token || "..."}`;
     navigator.clipboard?.writeText(shareUrl).then(() => {
       setCopied(true);
       setShowShareLink(true);
@@ -310,82 +305,49 @@ export default function MeetingPage() {
   const progressPct = actionItems.length > 0 ? (completedCount / actionItems.length) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-bg-base max-w-[720px] mx-auto px-6 pt-8 pb-24">
+    <div className="min-h-screen bg-bg-base max-w-[720px] mx-auto px-6 pt-6 pb-16">
       {/* Top Bar */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <button
           onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors text-sm font-medium hover:bg-bg-elevated/50 px-3 py-2 rounded-lg -ml-3"
+          className="flex items-center gap-1.5 text-text-muted hover:text-text-primary transition-colors text-sm -ml-1"
         >
           <ArrowLeft className="w-4 h-4" />
           Dashboard
         </button>
 
         <div className="flex items-center gap-2 relative">
-          {/* Visibility toggle */}
-          {meeting.share_token && (
-            <button
-              onClick={togglePublic}
-              className="flex items-center gap-1.5 text-text-muted hover:text-accent-primary px-3 py-2 rounded-lg transition-colors text-xs"
-              title={meeting.is_public ? "Make private" : "Make public"}
-            >
-              {meeting.is_public ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              {meeting.is_public ? "Public" : "Private"}
-            </button>
-          )}
-
-          <button
-            onClick={handleShare}
-            className="flex items-center gap-2 border border-border-default text-text-secondary hover:text-text-primary px-4 py-2 rounded-[10px] transition-all text-sm font-medium"
-          >
-            {copied ? (
-              <>
-                <Check className="w-4 h-4 text-success" />
-                <span className="text-success">Copied!</span>
-              </>
-            ) : (
-              <>
-                <Link className="w-4 h-4" />
-                <span className="hidden sm:inline">Share</span>
-              </>
-            )}
-          </button>
-
           {/* More menu */}
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-elevated rounded-lg transition-all"
+              className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-elevated rounded-xl transition-colors"
             >
               <MoreHorizontal className="w-4 h-4" />
             </button>
             {showMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                <div className="absolute top-full right-0 mt-2 w-52 bg-bg-elevated border border-border-default rounded-xl py-2 shadow-xl z-20"
-                  style={{ animation: "fadeIn 0.15s ease both" }}>
+                <div className="absolute top-full right-0 mt-2 w-48 bg-bg-elevated border border-border-default rounded-xl py-1.5 shadow-lg z-20">
                   <button
                     onClick={() => { setEditTitle(true); setShowMenu(false); }}
-                    className="flex items-center gap-3 w-full px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface/50 transition-colors"
+                    className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface/50 transition-colors"
                   >
                     <Edit3 className="w-3.5 h-3.5" /> Rename
                   </button>
-                  <button
-                    onClick={() => { if (meeting) downloadAsText(meeting); setShowMenu(false); }}
-                    className="flex items-center gap-3 w-full px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface/50 transition-colors"
-                  >
-                    <FileDown className="w-3.5 h-3.5" /> Export Text
-                  </button>
-                  <button
-                    onClick={() => { if (meeting) exportToPDF(meeting); setShowMenu(false); }}
-                    className="flex items-center gap-3 w-full px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface/50 transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5" /> Export PDF
-                  </button>
-                  <hr className="my-1.5 border-border-subtle" />
+                  {meeting.share_token && (
+                    <button
+                      onClick={() => { togglePublic(); setShowMenu(false); }}
+                      className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface/50 transition-colors"
+                    >
+                      {meeting.is_public ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      {meeting.is_public ? "Make Private" : "Make Public"}
+                    </button>
+                  )}
+                  <hr className="my-1 border-border-subtle" />
                   <button
                     onClick={() => { setShowMenu(false); handleDelete(); }}
-                    className="flex items-center gap-3 w-full px-4 py-2 text-sm text-error hover:bg-error-muted/50 transition-colors"
+                    className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-error hover:bg-error-muted/50 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> Delete Meeting
                   </button>
@@ -432,68 +394,60 @@ export default function MeetingPage() {
       )}
 
       {/* Meeting Header */}
-      <div className="mb-8" style={{ animation: "fadeIn 0.3s ease both" }}>
+      <div className="mb-6">
         <div className="flex items-start justify-between">
           <div>
             <h1
-              className="font-[family:var(--font-syne)] font-bold text-[28px] text-text-primary"
+              className="font-[family:var(--font-space-grotesk)] font-bold text-xl text-text-primary"
               style={{ lineHeight: "1.15" }}
             >
               {displayTitle || "Untitled Meeting"}
-              {isProcessing && <Loader2 className="w-5 h-5 inline-block ml-3 text-accent-primary animate-spin" />}
+              {isProcessing && <Loader2 className="w-4 h-4 inline-block ml-2 text-accent-primary animate-spin" />}
             </h1>
-            <p className="text-text-muted text-sm font-[family:var(--font-jetbrains)] mt-1">
+            <p className="text-text-muted text-xs mt-1 font-[family:var(--font-jetbrains)]">
               {new Date(meeting.created_at).toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
+                month: "short",
                 day: "numeric",
+                year: "numeric",
               })}
-              {" \u00B7 "}
-              {actionItems.length} {actionItems.length === 1 ? "task" : "tasks"}
-              {" \u00B7 "}
-              {decisions.length} {decisions.length === 1 ? "decision" : "decisions"}
+              {actionItems.length > 0 && ` \u00B7 ${actionItems.length} task${actionItems.length === 1 ? "" : "s"}`}
             </p>
           </div>
-          {completedCount < actionItems.length && actionItems.length > 0 && (
-            <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-warning-muted text-warning mt-1">
-              {actionItems.length - completedCount} pending
-            </span>
-          )}
         </div>
 
         {/* Progress */}
         {actionItems.length > 0 && (
-          <>
-            <div className="mt-4 h-1 bg-bg-elevated rounded-full overflow-hidden">
+          <div className="mt-4">
+            <div className="h-1 bg-bg-elevated rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${progressPct}%`,
                   background: progressPct === 100
-                    ? "linear-gradient(90deg, #10B981, #34D399)"
-                    : "var(--color-accent-primary)",
+                    ? "var(--color-success)"
+                    : "var(--gradient-hero)",
                 }}
               />
             </div>
-            <p className="text-xs text-text-secondary mt-1.5">
-              {completedCount} of {actionItems.length} tasks completed
+            <p className="text-[11px] text-text-muted mt-1.5">
+              {completedCount}/{actionItems.length} completed
             </p>
-          </>
+          </div>
         )}
       </div>
 
-      <div className="h-px bg-border-subtle my-8" />
+      <div className="h-px bg-border-subtle my-6" />
 
       {/* Tab Bar */}
-      <div className="flex gap-1 bg-bg-surface border border-border-subtle rounded-xl p-1 mb-6">
+      <div className="flex gap-0 mb-6 border-b border-border-subtle">
         {(["notes", "actions", "transcript"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
               activeTab === tab
-                ? "bg-accent-primary text-white shadow-sm"
-                : "text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
+                ? "border-accent-primary text-text-primary"
+                : "border-transparent text-text-muted hover:text-text-secondary"
             }`}
           >
             {tab === "notes" && "Notes"}
@@ -703,52 +657,45 @@ export default function MeetingPage() {
         </div>
       )}
 
-      <div className="h-px bg-border-subtle my-8" />
+      <div className="h-px bg-border-subtle my-6" />
 
       {/* Bottom Actions */}
-      <div className="flex items-center justify-center flex-wrap gap-3 pb-8">
-        <button
-          onClick={handleShare}
-          className="flex items-center gap-2 border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all"
-        >
-          <Share2 className="w-4 h-4" />
-          Share Link
-        </button>
+      <div className="flex items-center justify-center flex-wrap gap-2 pb-8">
         <button
           onClick={() => {
             if (!meeting) return;
             const text = copyShareFormat(meeting);
             navigator.clipboard?.writeText(text).then(() => {
               setCopied(true);
-              setShowToast("Copied to clipboard — paste into Slack or email");
+              setShowToast("Copied to clipboard");
               setTimeout(() => { setCopied(false); setShowToast(null); }, 2500);
             });
           }}
-          className="flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all"
+          className="flex items-center gap-2 bg-accent-primary hover:bg-accent-primary-hover text-text-inverse px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150"
         >
-          <Clipboard className="w-4 h-4" />
+          <Clipboard className="w-3.5 h-3.5" />
           Copy for Slack
         </button>
         <button
           onClick={() => { if (meeting) downloadAsMarkdown(meeting); }}
-          className="flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all"
+          className="flex items-center gap-2 border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150"
         >
-          <Download className="w-4 h-4" />
-          Export Markdown
-        </button>
-        <button
-          onClick={() => { if (meeting) downloadAsText(meeting); }}
-          className="flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2.5 rounded-[10px] text-sm font-medium transition-all"
-        >
-          <FileDown className="w-4 h-4" />
-          Export Text
+          <Download className="w-3.5 h-3.5" />
+          Markdown
         </button>
         <button
           onClick={() => { if (meeting) exportToPDF(meeting); }}
-          className="flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-5 py-2.5 rounded-[10px] text-sm font-medium transition-all"
+          className="flex items-center gap-2 border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150"
         >
-          <FileText className="w-4 h-4" />
-          Export PDF
+          <FileText className="w-3.5 h-3.5" />
+          PDF
+        </button>
+        <button
+          onClick={handleShare}
+          className="flex items-center gap-2 text-text-muted hover:text-text-primary px-3 py-2 text-sm transition-colors duration-150"
+        >
+          <Share2 className="w-3.5 h-3.5" />
+          Share
         </button>
       </div>
 

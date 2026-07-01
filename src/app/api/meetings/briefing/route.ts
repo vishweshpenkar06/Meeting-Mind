@@ -14,7 +14,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { templateName } = body;
     const template = getTemplate(templateName);
-    const sampleBriefing = getSampleBriefing(templateName || "general");
 
     const { data: recentMeetings } = await supabase
       .from("meetings")
@@ -35,11 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json(briefing);
   } catch (err) {
     console.error("Briefing generation error:", err);
-    try {
-      const body = await request.json().catch(() => ({}));
-      return NextResponse.json(getSampleBriefing(body.templateName || "general"));
-    } catch {
-      return NextResponse.json(getSampleBriefing("general"));
-    }
+    const body = await request.clone().json().catch(() => ({})) as { templateName?: string };
+    return NextResponse.json(getSampleBriefing(body?.templateName || "general"));
   }
 }

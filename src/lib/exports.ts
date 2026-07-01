@@ -26,7 +26,6 @@ export function exportToPDF(meeting: Meeting) {
   const doc = new jsPDF();
   const margin = 20;
   const contentWidth = doc.internal.pageSize.getWidth() - margin * 2;
-  const pageHeight = doc.internal.pageSize.getHeight();
   let y = 10;
 
   const checkPage = () => {

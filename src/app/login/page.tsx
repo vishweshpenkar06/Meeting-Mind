@@ -2,13 +2,12 @@
 
 import { useState, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
 
@@ -31,33 +30,28 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg-base px-6 relative overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full opacity-20"
-          style={{ background: "radial-gradient(ellipse, rgba(79,142,247,0.08) 0%, transparent 70%)" }}
-        />
-      </div>
+      {/* Dot grid background */}
+      <div className="absolute inset-0 dot-grid opacity-20 pointer-events-none" />
 
-      <div className="relative z-10 text-center max-w-md">
+      <div className="relative z-10 text-center max-w-sm w-full">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-16">
+        <div className="flex items-center justify-center gap-3 mb-12">
           <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center text-text-inverse font-bold text-2xl"
-            style={{ background: "var(--gradient-hero)", boxShadow: "0 0 24px rgba(79,142,247,0.25)" }}
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-text-inverse font-bold text-xl"
+            style={{ background: "var(--gradient-hero)" }}
           >
             M
           </div>
-          <span className="font-[family:var(--font-syne)] font-bold text-3xl text-text-primary">
+          <span className="font-[family:var(--font-space-grotesk)] font-bold text-2xl text-text-primary">
             MeetingMind
           </span>
         </div>
 
-        <h1 className="font-[family:var(--font-syne)] font-bold text-3xl text-text-primary mb-4"
-          style={{ lineHeight: "1.15" }}>
+        <h1 className="font-[family:var(--font-space-grotesk)] font-bold text-xl text-text-primary mb-3">
           Sign in to your workspace
         </h1>
-        <p className="text-text-secondary mb-10 max-w-sm mx-auto leading-relaxed">
-          Use Google to sign in securely. Your meetings and action items are private to your account.
+        <p className="text-text-secondary mb-8 text-sm leading-relaxed">
+          Your meetings and action items are private to your account.
         </p>
 
         {error && (
@@ -69,7 +63,7 @@ function LoginForm() {
         <button
           onClick={handleGoogleLogin}
           disabled={loading}
-          className="flex items-center gap-3 bg-white text-gray-900 px-8 py-3.5 rounded-[10px] font-semibold text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 mx-auto hover:-translate-y-0.5 hover:shadow-lg"
+          className="flex items-center justify-center gap-3 w-full bg-white text-gray-900 px-6 py-3.5 rounded-xl font-semibold text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
@@ -82,9 +76,9 @@ function LoginForm() {
 
         <Link
           href="/"
-          className="inline-block mt-6 text-text-muted hover:text-text-secondary text-sm transition-colors"
+          className="inline-block mt-8 text-text-muted hover:text-text-secondary text-sm transition-colors"
         >
-          {"\u2039"} Back to home
+          Back to home
         </Link>
       </div>
     </div>

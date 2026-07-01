@@ -21,8 +21,7 @@ export async function getUser() {
       return (await supabase.auth.getSession()).data;
     }
     return data;
-  } catch (err) {
-    // If it's the lock error, fallback to getSession
+  } catch {
     const { data } = await supabase.auth.getSession();
     return data;
   }

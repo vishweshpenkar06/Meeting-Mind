@@ -5,20 +5,20 @@ describe("templates", () => {
   it("returns general template when no name provided", () => {
     const template = getTemplate();
     expect(template).toBeDefined();
-    expect(template.name).toBe("general");
+    expect(template!.name).toBe("general");
   });
 
   it("returns general template when undefined", () => {
     const template = getTemplate(undefined);
-    expect(template.name).toBe("general");
+    expect(template!.name).toBe("general");
   });
 
   it("returns correct template by name", () => {
     const template = getTemplate("standup");
     expect(template).toBeDefined();
-    expect(template.name).toBe("standup");
-    expect(template.displayName).toBe("Daily Standup");
-    expect(template.aiPromptContext).toContain("STANDUP");
+    expect(template!.name).toBe("standup");
+    expect(template!.displayName).toBe("Daily Standup");
+    expect(template!.aiPromptContext).toContain("STANDUP");
   });
 
   it("returns undefined for unknown template name", () => {
