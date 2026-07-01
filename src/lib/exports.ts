@@ -22,7 +22,62 @@ export interface Meeting {
   key_decisions: KeyDecision[];
 }
 
+interface ExportData {
+  title: string;
+  date: string;
+  summary: string;
+  completedTasks: number;
+  totalTasks: number;
+  decisions: string[];
+  actionItems: Array<{
+    done: boolean;
+    owner: string;
+    task: string;
+    dueDate: string | null;
+  }>;
+}
+
+function resolveDecisionText(d: KeyDecision): string {
+  if (typeof d.decision_text === "string") return d.decision_text;
+  return (d.decision_text as { decision?: string })?.decision || "Decision";
+}
+
+function buildExportData(meeting: Meeting): ExportData {
+  return {
+    title: meeting.title || "Untitled Meeting",
+    date: new Date(meeting.created_at).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }),
+    summary: meeting.summary,
+    completedTasks: meeting.action_items.filter((a) => a.is_completed).length,
+    totalTasks: meeting.action_items.length,
+    decisions: meeting.key_decisions.map(resolveDecisionText),
+    actionItems: meeting.action_items.map((item) => ({
+      done: item.is_completed,
+      owner: item.owner_name,
+      task: item.task_description,
+      dueDate: item.due_date,
+    })),
+  };
+}
+
+function sanitizeFilename(title: string): string {
+  return (title || "meeting").replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function exportToPDF(meeting: Meeting) {
+  const data = buildExportData(meeting);
   const doc = new jsPDF();
   const margin = 20;
   const contentWidth = doc.internal.pageSize.getWidth() - margin * 2;
@@ -35,32 +90,44 @@ export function exportToPDF(meeting: Meeting) {
     }
   };
 
-  // Summary section
-  if (meeting.summary) {
+  doc.setFontSize(16);
+  doc.setTextColor(79, 142, 247);
+  doc.text(data.title, margin, y);
+  y += 7;
+
+  doc.setFontSize(9);
+  doc.setTextColor(100, 100, 100);
+  doc.text(data.date, margin, y);
+  y += 6;
+
+  doc.setFontSize(7);
+  doc.setTextColor(140, 140, 140);
+  doc.text("Exported from MeetingMind", margin, y);
+  y += 8;
+
+  if (data.summary) {
     checkPage();
     doc.setFontSize(11);
-    doc.setTextColor(0, 0, 180);
-    doc.text("Summary:", margin, y);
+    doc.setTextColor(79, 142, 247);
+    doc.text("Summary", margin, y);
     y += 6;
     doc.setFontSize(9);
     doc.setTextColor(0, 0, 0);
-    const lines = doc.splitTextToSize(meeting.summary, contentWidth);
+    const lines = doc.splitTextToSize(data.summary, contentWidth);
     doc.text(lines, margin, y);
     y += lines.length * 5 + 4;
   }
 
-  // Key Decisions
-  if (meeting.key_decisions.length > 0) {
+  if (data.decisions.length > 0) {
     checkPage();
     doc.setFontSize(11);
-    doc.setTextColor(128, 0, 128);
-    doc.text("Key Decisions:", margin, y);
+    doc.setTextColor(139, 92, 246);
+    doc.text("Key Decisions", margin, y);
     y += 6;
     doc.setFontSize(9);
     doc.setTextColor(0, 0, 0);
-    meeting.key_decisions.forEach((d) => {
+    data.decisions.forEach((t) => {
       checkPage();
-      const t = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
       const lines = doc.splitTextToSize(`- ${t}`, contentWidth);
       doc.text(lines, margin + 2, y);
       y += lines.length * 5 + 2;
@@ -68,141 +135,118 @@ export function exportToPDF(meeting: Meeting) {
     y += 3;
   }
 
-  // Action Items
-  if (meeting.action_items.length > 0) {
+  if (data.actionItems.length > 0) {
     checkPage();
     doc.setFontSize(11);
-    doc.setTextColor(0, 128, 0);
-    doc.text("Action Items:", margin, y);
+    doc.setTextColor(52, 211, 153);
+    doc.text("Action Items", margin, y);
     y += 6;
     doc.setFontSize(9);
-    doc.setTextColor(0, 0, 0);
-    meeting.action_items.forEach((item) => {
+    data.actionItems.forEach((item) => {
       checkPage();
-      const done = item.is_completed ? "[x]" : "[ ]";
-      let line = `${done} [${item.owner_name}] ${item.task_description}`;
-      if (item.due_date) {
-        line += ` (due: ${new Date(item.due_date).toLocaleDateString()})`;
+      const done = item.done ? "[x]" : "[ ]";
+      let line = `${done} [${item.owner}] ${item.task}`;
+      if (item.dueDate) {
+        line += ` (due: ${new Date(item.dueDate).toLocaleDateString()})`;
       }
       const lines = doc.splitTextToSize(line, contentWidth);
-      if (item.is_completed) {
-        doc.setTextColor(100, 100, 100);
-      } else {
-        doc.setTextColor(0, 0, 0);
-      }
+      doc.setTextColor(item.done ? 100 : 0, item.done ? 100 : 0, item.done ? 100 : 0);
       doc.text(lines, margin + 2, y);
       y += lines.length * 5 + 2;
     });
   }
 
-  const filename = `${(meeting.title || "meeting").replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.pdf`;
-  doc.save(filename);
+  doc.save(`${sanitizeFilename(data.title)}.pdf`);
 }
 
 export function downloadAsText(meeting: Meeting) {
-  let text = `${meeting.title}\n`;
-  text += `${new Date(meeting.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}\n`;
-  text += `${meeting.action_items.filter((a) => a.is_completed).length}/${meeting.action_items.length} tasks completed\n\n`;
+  const data = buildExportData(meeting);
+  let text = `${data.title}\n`;
+  text += `${data.date}\n`;
+  text += `${data.completedTasks}/${data.totalTasks} tasks completed\n\n`;
 
-  if (meeting.summary) {
-    text += `--- SUMMARY ---\n\n${meeting.summary}\n\n`;
+  if (data.summary) {
+    text += `--- SUMMARY ---\n\n${data.summary}\n\n`;
   }
 
-  if (meeting.key_decisions.length > 0) {
+  if (data.decisions.length > 0) {
     text += `--- KEY DECISIONS ---\n\n`;
-    meeting.key_decisions.forEach((d) => {
-      const t = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
+    data.decisions.forEach((t) => {
       text += `- ${t}\n`;
     });
     text += "\n";
   }
 
-  if (meeting.action_items.length > 0) {
+  if (data.actionItems.length > 0) {
     text += `--- ACTION ITEMS ---\n\n`;
-    meeting.action_items.forEach((item) => {
-      const done = item.is_completed ? "[x]" : "[ ]";
-      const due = item.due_date ? ` (due ${new Date(item.due_date).toLocaleDateString()})` : "";
-      text += `${done} [${item.owner_name}] ${item.task_description}${due}\n`;
+    data.actionItems.forEach((item) => {
+      const done = item.done ? "[x]" : "[ ]";
+      const due = item.dueDate ? ` (due ${new Date(item.dueDate).toLocaleDateString()})` : "";
+      text += `${done} [${item.owner}] ${item.task}${due}\n`;
     });
     text += "\n";
   }
 
   text += "---\nExported from MeetingMind";
-  const blob = new Blob([text], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${(meeting.title || "meeting").replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([text], { type: "text/plain" }), `${sanitizeFilename(data.title)}.txt`);
 }
 
 export function downloadAsMarkdown(meeting: Meeting) {
-  let md = `# ${meeting.title || "Untitled Meeting"}\n\n`;
-  md += `**Date:** ${new Date(meeting.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}\n`;
-  md += `**Tasks:** ${meeting.action_items.filter((a) => a.is_completed).length}/${meeting.action_items.length} completed\n\n`;
+  const data = buildExportData(meeting);
+  let md = `# ${data.title}\n\n`;
+  md += `**Date:** ${data.date}\n`;
+  md += `**Tasks:** ${data.completedTasks}/${data.totalTasks} completed\n\n`;
 
-  if (meeting.summary) {
-    md += `## Summary\n\n${meeting.summary}\n\n`;
+  if (data.summary) {
+    md += `## Summary\n\n${data.summary}\n\n`;
   }
 
-  if (meeting.key_decisions.length > 0) {
+  if (data.decisions.length > 0) {
     md += `## Key Decisions\n\n`;
-    meeting.key_decisions.forEach((d) => {
-      const t = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
+    data.decisions.forEach((t) => {
       md += `- ${t}\n`;
     });
     md += "\n";
   }
 
-  if (meeting.action_items.length > 0) {
+  if (data.actionItems.length > 0) {
     md += `## Action Items\n\n`;
-    meeting.action_items.forEach((item) => {
-      const done = item.is_completed ? "x" : " ";
-      const due = item.due_date ? ` *(due ${new Date(item.due_date).toLocaleDateString()})*` : "";
-      md += `- [${done}] **${item.owner_name}**: ${item.task_description}${due}\n`;
+    data.actionItems.forEach((item) => {
+      const done = item.done ? "x" : " ";
+      const due = item.dueDate ? ` *(due ${new Date(item.dueDate).toLocaleDateString()})*` : "";
+      md += `- [${done}] **${item.owner}**: ${item.task}${due}\n`;
     });
     md += "\n";
   }
 
   md += `---\n*Exported from MeetingMind*\n`;
-
-  const blob = new Blob([md], { type: "text/markdown" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${(meeting.title || "meeting").replace(/[^a-zA-Z0-9]/g, "-").toLowerCase()}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([md], { type: "text/markdown" }), `${sanitizeFilename(data.title)}.md`);
 }
 
 export function copyShareFormat(meeting: Meeting): string {
-  const date = new Date(meeting.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  const completed = meeting.action_items.filter((a) => a.is_completed).length;
-  const total = meeting.action_items.length;
+  const data = buildExportData(meeting);
 
-  let text = `*${meeting.title || "Untitled Meeting"}*\n`;
-  text += `${date} · ${completed}/${total} tasks done\n\n`;
+  let text = `*${data.title}*\n`;
+  text += `${data.date} \u00B7 ${data.completedTasks}/${data.totalTasks} tasks done\n\n`;
 
-  if (meeting.summary) {
-    text += `${meeting.summary}\n\n`;
+  if (data.summary) {
+    text += `${data.summary}\n\n`;
   }
 
-  if (meeting.key_decisions.length > 0) {
+  if (data.decisions.length > 0) {
     text += `*Key Decisions:*\n`;
-    meeting.key_decisions.forEach((d) => {
-      const t = typeof d.decision_text === "string" ? d.decision_text : (d.decision_text as { decision?: string })?.decision || "Decision";
+    data.decisions.forEach((t) => {
       text += `> ${t}\n`;
     });
     text += "\n";
   }
 
-  if (meeting.action_items.length > 0) {
+  if (data.actionItems.length > 0) {
     text += `*Action Items:*\n`;
-    meeting.action_items.forEach((item) => {
-      const icon = item.is_completed ? "✅" : "⬜";
-      const due = item.due_date ? ` (due ${new Date(item.due_date).toLocaleDateString()})` : "";
-      text += `${icon} *${item.owner_name}*: ${item.task_description}${due}\n`;
+    data.actionItems.forEach((item) => {
+      const icon = item.done ? "\u2705" : "\u2B1C";
+      const due = item.dueDate ? ` (due ${new Date(item.dueDate).toLocaleDateString()})` : "";
+      text += `${icon} *${item.owner}*: ${item.task}${due}\n`;
     });
   }
 

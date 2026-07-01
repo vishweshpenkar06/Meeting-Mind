@@ -80,6 +80,11 @@ export default function MeetingPage() {
   const [activeTab, setActiveTab] = useState<"notes" | "actions" | "transcript">("notes");
   const [isDiarizing, setIsDiarizing] = useState(false);
   const [diarizationAttempted, setDiarizationAttempted] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemField, setEditingItemField] = useState<"owner" | "task" | "dueDate" | null>(null);
+  const [editingItemValue, setEditingItemValue] = useState("");
+  const [editingDecisionId, setEditingDecisionId] = useState<string | null>(null);
+  const [editingDecisionValue, setEditingDecisionValue] = useState("");
 
   const fetchMeeting = useCallback(async () => {
     try {
@@ -199,6 +204,78 @@ export default function MeetingPage() {
       fetchMeeting();
     } finally {
       setToggling(false);
+    }
+  };
+
+  const startEditItem = (itemId: string, field: "owner" | "task" | "dueDate", currentValue: string) => {
+    setEditingItemId(itemId);
+    setEditingItemField(field);
+    setEditingItemValue(currentValue || "");
+  };
+
+  const saveEditItem = async () => {
+    if (!meeting || !editingItemId || !editingItemField) return;
+
+    const item = meeting.action_items.find((i) => i.id === editingItemId);
+    if (!item) return;
+
+    const updates: Record<string, unknown> = { actionItemId: editingItemId };
+    if (editingItemField === "owner") updates.ownerName = editingItemValue;
+    if (editingItemField === "task") updates.taskDescription = editingItemValue;
+    if (editingItemField === "dueDate") updates.dueDate = editingItemValue || null;
+
+    setMeeting({
+      ...meeting,
+      action_items: meeting.action_items.map((i) => {
+        if (i.id !== editingItemId) return i;
+        if (editingItemField === "owner") return { ...i, owner_name: editingItemValue };
+        if (editingItemField === "task") return { ...i, task_description: editingItemValue };
+        if (editingItemField === "dueDate") return { ...i, due_date: editingItemValue || null };
+        return i;
+      }),
+    });
+
+    setEditingItemId(null);
+    setEditingItemField(null);
+
+    try {
+      await fetch(`/api/meetings/${meeting.id}/action-items`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+    } catch {
+      console.error("Failed to save action item edit");
+      fetchMeeting();
+    }
+  };
+
+  const startEditDecision = (decisionId: string, currentText: string) => {
+    setEditingDecisionId(decisionId);
+    setEditingDecisionValue(currentText);
+  };
+
+  const saveEditDecision = async () => {
+    if (!meeting || !editingDecisionId || !editingDecisionValue.trim()) return;
+
+    setMeeting({
+      ...meeting,
+      key_decisions: meeting.key_decisions.map((d) =>
+        d.id === editingDecisionId ? { ...d, decision_text: editingDecisionValue.trim() } : d
+      ),
+    });
+
+    setEditingDecisionId(null);
+
+    try {
+      await fetch(`/api/meetings/${meeting.id}/decisions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisionId: editingDecisionId, decisionText: editingDecisionValue.trim() }),
+      });
+    } catch {
+      console.error("Failed to save decision edit");
+      fetchMeeting();
     }
   };
 
@@ -485,10 +562,25 @@ export default function MeetingPage() {
                     : typeof d.decision_text === "object" && d.decision_text !== null
                       ? (d.decision_text as unknown as { decision?: string }).decision || JSON.stringify(d.decision_text)
                       : String(d.decision_text || "");
+                  const isEditingDecision = editingDecisionId === d.id;
                   return (
-                  <div key={d.id} className="flex items-start gap-3 pl-3">
+                  <div key={d.id} className="flex items-start gap-3 pl-3 group/dec">
                     <div className="w-[4px] h-[4px] rounded-sm bg-accent-purple mt-2.5 flex-shrink-0" />
-                    <span className="text-text-primary text-[14px] leading-[1.65] font-medium">{text}</span>
+                    {isEditingDecision ? (
+                      <input
+                        autoFocus
+                        value={editingDecisionValue}
+                        onChange={(e) => setEditingDecisionValue(e.target.value)}
+                        onBlur={saveEditDecision}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveEditDecision(); if (e.key === "Escape") setEditingDecisionId(null); }}
+                        className="flex-1 text-text-primary text-[14px] leading-[1.65] font-medium bg-bg-surface border border-accent-primary rounded px-2 py-0.5 focus:outline-none"
+                      />
+                    ) : (
+                      <span
+                        className="text-text-primary text-[14px] leading-[1.65] font-medium cursor-pointer hover:text-accent-primary transition-colors"
+                        onClick={() => startEditDecision(d.id, text)}
+                      >{text}</span>
+                    )}
                   </div>
                   );
                 })}
@@ -558,18 +650,19 @@ export default function MeetingPage() {
             <div className="flex flex-col">
               {actionItems.map((item: { id: string; owner_name: string; task_description: string; due_date: string | null; is_completed?: boolean }) => {
                 const priority = inferPriority(item.task_description, item.due_date);
+                const isEditing = editingItemId === item.id;
                 return (
                 <div
                   key={item.id}
-                  className="flex items-center gap-3 py-3 px-3 rounded-lg hover:bg-bg-elevated/40 transition-all duration-200 cursor-pointer group border-b border-border-subtle last:border-b-0"
-                  onClick={() => toggleItem(item.id)}
+                  className={`flex items-center gap-3 py-3 px-3 rounded-lg transition-all duration-200 group border-b border-border-subtle last:border-b-0 ${isEditing ? "bg-bg-elevated/60" : "hover:bg-bg-elevated/40 cursor-pointer"}`}
                 >
                   <div
-                    className="w-[18px] h-[18px] rounded border-[2px] flex items-center justify-center flex-shrink-0 transition-all duration-200"
+                    className="w-[18px] h-[18px] rounded border-[2px] flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer"
                     style={{
                       borderColor: item.is_completed ? "#34D399" : "#2A3F57",
                       backgroundColor: item.is_completed ? "#34D399" : "transparent",
                     }}
+                    onClick={() => toggleItem(item.id)}
                   >
                     {item.is_completed && (
                       <svg className="w-3 h-3 text-text-inverse" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -577,9 +670,25 @@ export default function MeetingPage() {
                       </svg>
                     )}
                   </div>
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-sm flex-shrink-0" style={{ backgroundColor: "rgba(45, 31, 94, 0.6)", color: "#8B5CF6" }}>
-                    {item.owner_name}
-                  </span>
+                  {isEditing && editingItemField === "owner" ? (
+                    <input
+                      autoFocus
+                      value={editingItemValue}
+                      onChange={(e) => setEditingItemValue(e.target.value)}
+                      onBlur={saveEditItem}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveEditItem(); if (e.key === "Escape") setEditingItemId(null); }}
+                      className="text-xs font-semibold px-2 py-0.5 rounded-sm bg-bg-surface border border-accent-primary text-text-primary focus:outline-none w-24"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span
+                      className="text-xs font-semibold px-2.5 py-0.5 rounded-sm flex-shrink-0 cursor-pointer hover:opacity-80"
+                      style={{ backgroundColor: "rgba(45, 31, 94, 0.6)", color: "#8B5CF6" }}
+                      onClick={(e) => { e.stopPropagation(); startEditItem(item.id, "owner", item.owner_name); }}
+                    >
+                      {item.owner_name}
+                    </span>
+                  )}
                   {priority && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wider"
                       style={{
@@ -588,12 +697,41 @@ export default function MeetingPage() {
                       }}
                     >{priority}</span>
                   )}
-                  <span className="flex-1 text-[14px] transition-all duration-200"
-                    style={{ color: item.is_completed ? "#4A5E78" : "#EDF2FF", textDecoration: item.is_completed ? "line-through" : "none" }}
-                  >{item.task_description}</span>
-                  <span className="text-xs font-[family:var(--font-jetbrains)] flex-shrink-0"
-                    style={{ color: item.is_completed ? "#34D399" : "#4A5E78" }}
-                  >{item.due_date ? new Date(item.due_date).toLocaleDateString() : "No deadline"}</span>
+                  {isEditing && editingItemField === "task" ? (
+                    <input
+                      autoFocus
+                      value={editingItemValue}
+                      onChange={(e) => setEditingItemValue(e.target.value)}
+                      onBlur={saveEditItem}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveEditItem(); if (e.key === "Escape") setEditingItemId(null); }}
+                      className="flex-1 text-[14px] bg-bg-surface border border-accent-primary text-text-primary rounded px-2 py-0.5 focus:outline-none"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span
+                      className="flex-1 text-[14px] transition-all duration-200 cursor-pointer"
+                      style={{ color: item.is_completed ? "#4A5E78" : "#EDF2FF", textDecoration: item.is_completed ? "line-through" : "none" }}
+                      onClick={(e) => { e.stopPropagation(); if (!item.is_completed) startEditItem(item.id, "task", item.task_description); }}
+                    >{item.task_description}</span>
+                  )}
+                  {isEditing && editingItemField === "dueDate" ? (
+                    <input
+                      autoFocus
+                      type="date"
+                      value={editingItemValue}
+                      onChange={(e) => setEditingItemValue(e.target.value)}
+                      onBlur={saveEditItem}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveEditItem(); if (e.key === "Escape") setEditingItemId(null); }}
+                      className="text-xs font-[family:var(--font-jetbrains)] bg-bg-surface border border-accent-primary text-text-primary rounded px-2 py-0.5 focus:outline-none w-32"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span
+                      className="text-xs font-[family:var(--font-jetbrains)] flex-shrink-0 cursor-pointer hover:text-accent-primary"
+                      style={{ color: item.is_completed ? "#34D399" : "#4A5E78" }}
+                      onClick={(e) => { e.stopPropagation(); if (!item.is_completed) startEditItem(item.id, "dueDate", item.due_date || ""); }}
+                    >{item.due_date ? new Date(item.due_date).toLocaleDateString() : "No deadline"}</span>
+                  )}
                 </div>
                 );
               })}

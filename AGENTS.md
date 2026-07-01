@@ -9,7 +9,7 @@ AI-powered meeting transcription, analysis, and note-taking app. Upload audio/vi
 - **Framework**: Next.js 16 (App Router), React 19, TypeScript
 - **Styling**: Tailwind CSS v4
 - **Database**: Supabase (PostgreSQL + Auth + Storage)
-- **AI**: OpenAI (analysis/embeddings), Groq (transcription), OpenRouter, Ollama (fallbacks)
+- **AI**: NVIDIA NIM (first fallback), OpenAI (analysis/embeddings), Groq (transcription), OpenRouter, Ollama (fallbacks)
 - **Audio**: FFmpeg (ffmpeg-static), Whisper (Groq API)
 - **Icons**: Lucide React
 
@@ -95,11 +95,22 @@ GROQ_API_KEY=                    # For transcription (free at console.groq.com)
 
 Optional:
 ```
+NVIDIA_API_KEY=                  # NVIDIA NIM first fallback (https://build.nvidia.com)
+NVIDIA_MODEL=                    # Override NVIDIA model (nvidia/llama-3.3-nemotron-super-49b-v1)
 OPENROUTER_API_KEY=              # Fallback AI provider
 OLLAMA_BASE_URL=                 # Local AI fallback
 OPENAI_MODEL=                    # Override default model (gpt-4o)
 GROQ_MODEL=                      # Override transcription model
 ```
+
+## AI Provider Fallback Chain
+
+1. **NVIDIA NIM** (nvidia/llama-3.3-nemotron-super-49b-v1) — First fallback, requires `NVIDIA_API_KEY`
+2. **OpenAI** (gpt-4o) — Best quality, requires `OPENAI_API_KEY`
+3. **Groq** (llama-3.3-70b-versatile) — Fast, free tier available
+4. **OpenRouter** (claude-sonnet-4-5) — Multi-model gateway
+5. **Ollama** (llama3.1) — Local, no API key needed
+6. **Heuristic fallback** — If all providers fail, extracts basic info using regex/NLP
 
 ## Code Conventions
 

@@ -38,7 +38,7 @@ export async function POST(
     }
 
     const templateContext = getTemplate(meeting.template_name || meeting.meeting_type || undefined)?.aiPromptContext;
-    const result = await processMeetingWithAI(meeting.raw_transcript || "", templateContext);
+    const result = await processMeetingWithAI(meeting.raw_transcript || "", templateContext, meeting.created_at);
 
     const { error: updateError } = await supabase
       .from("meetings")

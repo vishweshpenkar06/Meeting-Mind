@@ -9,7 +9,7 @@ AI-powered meeting transcription, analysis, and note-taking app. Users upload au
 - **Framework**: Next.js 16 (App Router), React 19, TypeScript (strict mode)
 - **Styling**: Tailwind CSS v4 with custom CSS theme variables in `globals.css`
 - **Database**: Supabase (PostgreSQL + Auth + Storage + RLS)
-- **AI Providers**: OpenAI → Groq → OpenRouter → Ollama (fallback chain)
+- **AI Providers**: NVIDIA NIM → OpenAI → Groq → OpenRouter → Ollama (fallback chain)
 - **Transcription**: Groq Whisper API (`whisper-large-v3-turbo`)
 - **Audio Processing**: FFmpeg (`ffmpeg-static`) for video→audio extraction and chunking
 - **Embeddings**: OpenAI `text-embedding-3-small` for semantic search via Supabase `match_meetings` RPC
@@ -133,6 +133,8 @@ GROQ_API_KEY=                    # For transcription (free at console.groq.com)
 ### Optional
 
 ```
+NVIDIA_API_KEY=                  # NVIDIA NIM first fallback (https://build.nvidia.com)
+NVIDIA_MODEL=                    # Override NVIDIA model (nvidia/llama-3.3-nemotron-super-49b-v1)
 OPENROUTER_API_KEY=              # Fallback AI provider
 OLLAMA_BASE_URL=                 # Local AI fallback
 OPENAI_MODEL=                    # Override default model (gpt-4o)
@@ -145,11 +147,12 @@ OLLAMA_MODEL=                    # Override Ollama model
 
 ## AI Provider Fallback Chain
 
-1. **OpenAI** (gpt-4o) — Best quality, requires API key
-2. **Groq** (llama-3.3-70b-versatile) — Fast, free tier available
-3. **OpenRouter** (claude-sonnet-4-5) — Multi-model gateway
-4. **Ollama** (llama3.1) — Local, no API key needed
-5. **Heuristic fallback** — If all providers fail, extracts basic info from transcript using regex/NLP
+1. **NVIDIA NIM** (nvidia/llama-3.3-nemotron-super-49b-v1) — First fallback, requires `NVIDIA_API_KEY`
+2. **OpenAI** (gpt-4o) — Best quality, requires `OPENAI_API_KEY`
+3. **Groq** (llama-3.3-70b-versatile) — Fast, free tier available
+4. **OpenRouter** (claude-sonnet-4-5) — Multi-model gateway
+5. **Ollama** (llama3.1) — Local, no API key needed
+6. **Heuristic fallback** — If all providers fail, extracts basic info from transcript using regex/NLP
 
 Each provider is tried in order. If one fails, the next is attempted. The fallback generator runs keyword extraction, sentence splitting, and pattern matching for action items/decisions/risks.
 

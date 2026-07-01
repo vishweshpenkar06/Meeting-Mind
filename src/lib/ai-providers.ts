@@ -1,7 +1,7 @@
 import { OpenAI } from "openai";
 import type { AIMeetingResult } from "./transcription";
 
-export type AIProvider = "openai" | "groq" | "openrouter" | "ollama";
+export type AIProvider = "nvidia" | "openai" | "groq" | "openrouter" | "ollama";
 
 interface ProviderConfig {
   name: AIProvider;
@@ -19,7 +19,7 @@ RULES:
 - Keep each bullet under 25 words.
 - Write in present tense.`;
 
-const USER_PROMPT = `Analyze this transcript. Return ONLY valid JSON:
+const USER_PROMPT = `Analyze this transcript. The meeting took place on {{MEETING_DATE}}. Return ONLY valid JSON:
 
 {
   "title": "string (5 words max)",
@@ -45,6 +45,12 @@ const USER_PROMPT = `Analyze this transcript. Return ONLY valid JSON:
   "risks": [{"risk": "string (one line)", "mitigation": "string (one line, or 'None')}"],
   "followUps": ["string (one line each, unanswered questions or deferred items)"]
 }
+
+DUE DATE RULES:
+- ONLY output a dueDate if the transcript explicitly states or clearly implies one relative to the meeting date ({{MEETING_DATE}}).
+- If someone says "next Friday" or "by end of week", compute the actual date relative to {{MEETING_DATE}}.
+- If no deadline is mentioned, set dueDate to null.
+- NEVER invent or guess a date. When in doubt, use null.
 
 SUMMARY FORMAT — use this exact structure with section headers:
 ## What Was Discussed
@@ -74,6 +80,15 @@ Transcript:
 
 function makeProviders(): ProviderConfig[] {
   const providers: ProviderConfig[] = [];
+
+  if (process.env.NVIDIA_API_KEY) {
+    providers.push({
+      name: "nvidia",
+      apiKey: process.env.NVIDIA_API_KEY,
+      baseURL: "https://integrate.api.nvidia.com/v1",
+      model: process.env.NVIDIA_MODEL || "nvidia/llama-3.3-nemotron-super-49b-v1",
+    });
+  }
 
   if (process.env.OPENAI_API_KEY) {
     providers.push({
@@ -205,7 +220,11 @@ function generateFallbackMeetingResult(transcript: string): AIMeetingResult {
   };
 }
 
-export async function processMeetingWithAI(transcript: string, templateContext?: string): Promise<AIMeetingResult> {
+export async function processMeetingWithAI(
+  transcript: string,
+  templateContext?: string,
+  meetingDate?: string,
+): Promise<AIMeetingResult> {
   const providers = makeProviders();
 
   const isPlaceholder = /automatic speech transcription was unavailable|transcription was unavailable|could not be generated/i.test(transcript);
@@ -225,6 +244,9 @@ export async function processMeetingWithAI(transcript: string, templateContext?:
     return generateFallbackMeetingResult(transcript);
   }
 
+  const anchorDate = meetingDate || new Date().toISOString().split("T")[0];
+  const anchorDateFormatted = new Date(anchorDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
   const fullSystemPrompt = templateContext ? `${templateContext}\n\n${SYSTEM_PROMPT}` : SYSTEM_PROMPT;
   const errors: string[] = [];
 
@@ -232,7 +254,9 @@ export async function processMeetingWithAI(transcript: string, templateContext?:
     try {
       const openai = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
       const truncatedTranscript = transcript.length > 15000 ? transcript.slice(0, 15000) + "\n\n[Transcript truncated for analysis]" : transcript;
-      const userPrompt = USER_PROMPT.replace("{{TRANSCRIPT}}", truncatedTranscript);
+      const userPrompt = USER_PROMPT
+        .replace(/\{\{MEETING_DATE\}\}/g, anchorDateFormatted)
+        .replace("{{TRANSCRIPT}}", truncatedTranscript);
 
       const completion = await openai.chat.completions.create({
         model: config.model,
@@ -268,10 +292,19 @@ export async function processMeetingWithAI(transcript: string, templateContext?:
         }) : [],
         actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems.map((a: unknown) => {
           const obj = a as Record<string, string>;
+          let dueDate = obj.dueDate || obj.due_date || null;
+          if (dueDate) {
+            const parsedDate = new Date(dueDate);
+            const anchor = new Date(anchorDate);
+            const monthsDiff = (parsedDate.getTime() - anchor.getTime()) / (1000 * 60 * 60 * 24 * 30);
+            if (parsedDate < anchor || monthsDiff > 12) {
+              dueDate = null;
+            }
+          }
           return {
             owner: obj.owner || "Unassigned Backlog",
             task: obj.task || obj.task_description || "",
-            dueDate: obj.dueDate || obj.due_date || null,
+            dueDate,
             priority: obj.priority || "medium",
             context: obj.context || "",
           };

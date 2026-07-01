@@ -32,28 +32,19 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { actionItemId, isCompleted, ownerName, taskDescription, dueDate } = body as {
-      actionItemId: string;
-      isCompleted?: boolean;
-      ownerName?: string;
-      taskDescription?: string;
-      dueDate?: string | null;
+    const { decisionId, decisionText } = body as {
+      decisionId: string;
+      decisionText: string;
     };
 
-    const updates: Record<string, unknown> = {};
-    if (isCompleted !== undefined) updates.is_completed = isCompleted;
-    if (ownerName !== undefined) updates.owner_name = ownerName;
-    if (taskDescription !== undefined) updates.task_description = taskDescription;
-    if (dueDate !== undefined) updates.due_date = dueDate;
-
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+    if (!decisionText || !decisionText.trim()) {
+      return NextResponse.json({ error: "Decision text is required" }, { status: 400 });
     }
 
     const { data, error } = await supabase
-      .from("action_items")
-      .update(updates)
-      .eq("id", actionItemId)
+      .from("key_decisions")
+      .update({ decision_text: decisionText.trim() })
+      .eq("id", decisionId)
       .eq("meeting_id", meetingId)
       .select()
       .single();
@@ -64,9 +55,9 @@ export async function PATCH(
 
     return NextResponse.json(data);
   } catch (err) {
-    console.error("Error updating action item:", err);
+    console.error("Error updating decision:", err);
     return NextResponse.json(
-      { error: "Failed to update action item" },
+      { error: "Failed to update decision" },
       { status: 500 }
     );
   }

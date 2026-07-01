@@ -7,6 +7,9 @@ import { embed } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { getTemplate } from "@/lib/templates";
 
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
@@ -30,7 +33,8 @@ export async function GET(request: Request) {
         created_at,
         summary,
         is_public,
-        share_token
+        share_token,
+        template_name
       `
       )
       .eq("user_id", user.id);
@@ -84,11 +88,11 @@ export async function GET(request: Request) {
 
     const meetingIds = userMeetingIds?.map((m: { id: string }) => m.id) ?? [];
 
-    let overdueItems: { id: string }[] | null = null;
+    let overdueItems: { id: string; task_description: string; owner_name: string; meeting_id: string }[] | null = null;
     if (meetingIds.length > 0) {
       const result = await supabase
         .from("action_items")
-        .select("id")
+        .select("id, task_description, owner_name, meeting_id")
         .eq("is_completed", false)
         .lt("due_date", new Date().toISOString().split("T")[0])
         .in("meeting_id", meetingIds);
@@ -105,20 +109,59 @@ export async function GET(request: Request) {
       meetings.sort((a: { id: string }, b: { id: string }) => matchedOrder.indexOf(a.id) - matchedOrder.indexOf(b.id));
     }
 
-    const formatted = meetings?.map((m: { id: string; title: string; created_at: string; is_public: boolean; share_token: string | null }) => ({
+    const meetingIdsForCounts = meetings?.map((m: { id: string }) => m.id) ?? [];
+
+    const actionCounts: Record<string, { total: number; overdue: number }> = {};
+    const decisionCounts: Record<string, number> = {};
+
+    if (meetingIdsForCounts.length > 0) {
+      const { data: allActionItems } = await supabase
+        .from("action_items")
+        .select("meeting_id, is_completed, due_date")
+        .in("meeting_id", meetingIdsForCounts);
+
+      if (allActionItems) {
+        const today = new Date().toISOString().split("T")[0];
+        for (const item of allActionItems as Array<{ meeting_id: string; is_completed: boolean; due_date: string | null }>) {
+          if (!actionCounts[item.meeting_id]) {
+            actionCounts[item.meeting_id] = { total: 0, overdue: 0 };
+          }
+          actionCounts[item.meeting_id].total++;
+          if (!item.is_completed && item.due_date && item.due_date < today) {
+            actionCounts[item.meeting_id].overdue++;
+          }
+        }
+      }
+
+      const { data: allDecisions } = await supabase
+        .from("key_decisions")
+        .select("meeting_id")
+        .in("meeting_id", meetingIdsForCounts);
+
+      if (allDecisions) {
+        for (const d of allDecisions as Array<{ meeting_id: string }>) {
+          decisionCounts[d.meeting_id] = (decisionCounts[d.meeting_id] || 0) + 1;
+        }
+      }
+    }
+
+    const formatted = meetings?.map((m: { id: string; title: string; created_at: string; summary: string; is_public: boolean; share_token: string | null; template_name: string | null }) => ({
       id: m.id,
       title: m.title || "Untitled Meeting",
       date: m.created_at,
-      meetingType: "general",
+      templateName: m.template_name || "general",
+      summary: m.summary || "",
       isPublic: m.is_public,
       shareToken: m.share_token,
-      tasks: 0,
-      decisions: 0,
+      tasks: actionCounts[m.id]?.total ?? 0,
+      overdueTasks: actionCounts[m.id]?.overdue ?? 0,
+      decisions: decisionCounts[m.id] ?? 0,
     }));
 
     return NextResponse.json({
       meetings: formatted || [],
       overdueCount: overdueItems?.length ?? 0,
+      overdueItems: overdueItems ?? [],
     });
   } catch (err) {
     console.error("Error fetching meetings:", err);
@@ -244,7 +287,7 @@ export async function POST(request: Request) {
     }
 
     if (!user) {
-      const result = await processMeetingWithAI(effectiveTranscript, templateContext);
+      const result = await processMeetingWithAI(effectiveTranscript, templateContext, new Date().toISOString());
       return NextResponse.json(
         {
           demo: true,
@@ -325,9 +368,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json(fullMeeting, { status: 201 });
   } catch (err) {
-    console.error("Error creating meeting:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("Error creating meeting:", message, err);
     return NextResponse.json(
-      { error: "Failed to create meeting" },
+      { error: `Failed to create meeting: ${message}` },
       { status: 500 }
     );
   }

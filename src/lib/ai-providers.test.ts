@@ -89,4 +89,35 @@ describe("ai-providers helper functions", () => {
       expect(topics).not.toContain("And");
     });
   });
+
+  describe("due date validation", () => {
+    function validateDueDate(dueDate: string | null, meetingDate: string): string | null {
+      if (!dueDate) return null;
+      const parsed = new Date(dueDate);
+      const anchor = new Date(meetingDate);
+      const monthsDiff = (parsed.getTime() - anchor.getTime()) / (1000 * 60 * 60 * 24 * 30);
+      if (parsed < anchor || monthsDiff > 12) return null;
+      return dueDate;
+    }
+
+    it("accepts a due date within 12 months of meeting", () => {
+      expect(validateDueDate("2026-07-15", "2026-06-28")).toBe("2026-07-15");
+    });
+
+    it("rejects a due date before the meeting date", () => {
+      expect(validateDueDate("2024-03-15", "2026-06-28")).toBeNull();
+    });
+
+    it("rejects a due date more than 12 months after the meeting", () => {
+      expect(validateDueDate("2028-07-01", "2026-06-28")).toBeNull();
+    });
+
+    it("returns null when dueDate is null", () => {
+      expect(validateDueDate(null, "2026-06-28")).toBeNull();
+    });
+
+    it("accepts a due date exactly on the meeting date", () => {
+      expect(validateDueDate("2026-06-28", "2026-06-28")).toBe("2026-06-28");
+    });
+  });
 });

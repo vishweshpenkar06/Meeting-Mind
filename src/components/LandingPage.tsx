@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, FileText, CheckCircle, Link2, Download, Search, Zap } from "lucide-react";
+import GoogleSignInButton from "./GoogleSignInButton";
 
 const features = [
   { icon: FileText, title: "Smart Summary", desc: "AI condenses your meeting into key takeaways" },
@@ -72,18 +73,12 @@ export default function LandingPage() {
         </p>
 
         {/* CTA */}
-        <a
-          href="/login"
-          className="flex items-center gap-2 px-8 py-4 rounded-xl text-text-inverse text-[15px] font-semibold transition-all duration-150 hover:opacity-90"
-          style={{ background: "var(--gradient-hero)" }}
-        >
-          <span>Continue with Google</span>
-          <ArrowRight className="w-4 h-4" />
-        </a>
-
-        <p className="text-text-muted text-sm mt-4">
-          No credit card required
-        </p>
+        <div className="flex flex-col items-center gap-2">
+          <GoogleSignInButton variant="hero" />
+          <p className="text-text-muted text-sm mt-2">
+            No credit card required
+          </p>
+        </div>
       </div>
 
       {/* Features */}
@@ -114,9 +109,13 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-border-subtle py-6 text-center">
-        <p className="text-text-muted text-xs">
-          2026 MeetingMind
-        </p>
+        <div className="flex items-center justify-center gap-4 text-text-muted text-xs">
+          <span>2026 MeetingMind</span>
+          <span className="text-border-default">|</span>
+          <a href="/privacy" className="hover:text-text-secondary transition-colors">Privacy Policy</a>
+          <span className="text-border-default">|</span>
+          <a href="/terms" className="hover:text-text-secondary transition-colors">Terms of Service</a>
+        </div>
       </footer>
     </div>
   );

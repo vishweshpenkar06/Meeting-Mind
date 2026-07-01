@@ -94,13 +94,21 @@ export default function NewMeetingPage() {
           language: language !== "auto" ? language : undefined,
         }),
         headers: useFileUpload ? undefined : { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(300000),
       });
 
       setProcessingStep(2);
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to process meeting");
+        let serverError = "Failed to process meeting";
+        try {
+          const errData = await res.json();
+          if (errData?.error) serverError = errData.error;
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) serverError = text.slice(0, 200);
+        }
+        throw new Error(serverError);
       }
 
       const meeting = await res.json();
@@ -121,7 +129,13 @@ export default function NewMeetingPage() {
         router.push(`/meeting/${meeting.id}`);
       }, 600);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        setError("The request timed out. Large video files can take several minutes to process. Try a smaller file or paste the transcript directly.");
+      } else if (err instanceof TypeError && err.message.includes("fetch")) {
+        setError("Network error. Check your connection and try again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      }
       setIsProcessing(false);
       setProcessingStep(0);
     }
