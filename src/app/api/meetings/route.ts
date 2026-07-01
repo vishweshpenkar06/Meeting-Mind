@@ -6,9 +6,58 @@ import crypto from "crypto";
 import { embed } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { getTemplate } from "@/lib/templates";
+import { Readable } from "stream";
 
-export const runtime = "nodejs";
-export const maxDuration = 300;
+async function parseMultipartBody(request: Request): Promise<{ fields: Record<string, string>; file: File | null }> {
+  const contentType = request.headers.get("content-type") || "";
+  const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+  if (!boundaryMatch) throw new Error("No multipart boundary found");
+
+  const boundary = boundaryMatch[1];
+  const nodeStream = Readable.fromWeb(request.body as import("stream/web").ReadableStream);
+  const chunks: Buffer[] = [];
+  for await (const chunk of nodeStream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const body = Buffer.concat(chunks);
+
+  const boundaryBuf = Buffer.from(`--${boundary}`);
+  const parts: Buffer[] = [];
+  let start = body.indexOf(boundaryBuf) + boundaryBuf.length + 2;
+
+  while (start < body.length) {
+    const nextBoundary = body.indexOf(boundaryBuf, start);
+    if (nextBoundary === -1) break;
+    parts.push(body.subarray(start, nextBoundary - 2));
+    start = nextBoundary + boundaryBuf.length + 2;
+  }
+
+  const fields: Record<string, string> = {};
+  let file: File | null = null;
+
+  for (const part of parts) {
+    const headerEnd = part.indexOf("\r\n\r\n");
+    if (headerEnd === -1) continue;
+    const headerStr = part.subarray(0, headerEnd).toString("utf-8");
+    const data = part.subarray(headerEnd + 4);
+
+    const nameMatch = headerStr.match(/name="([^"]+)"/);
+    const filenameMatch = headerStr.match(/filename="([^"]+)"/);
+    const mimeMatch = headerStr.match(/Content-Type:\s*(.+)/i);
+    if (!nameMatch) continue;
+
+    const name = nameMatch[1];
+    if (filenameMatch) {
+      file = new File([new Uint8Array(data)], filenameMatch[1], {
+        type: mimeMatch ? mimeMatch[1].trim() : "application/octet-stream",
+      });
+    } else {
+      fields[name] = data.toString("utf-8").trim();
+    }
+  }
+
+  return { fields, file };
+}
 
 export async function GET(request: Request) {
   try {
@@ -189,20 +238,14 @@ export async function POST(request: Request) {
     let uploadedFile: File | null = null;
 
     if (contentType.includes("multipart/form-data")) {
-      const formData = await request.formData();
-      const transcriptValue = formData.get("transcript");
-      const titleValue = formData.get("title");
-      const audioUrlValue = formData.get("audioUrl");
-      const templateNameValue = formData.get("templateName");
-      const languageValue = formData.get("language");
-      const fileValue = formData.get("file");
+      const { fields, file } = await parseMultipartBody(request);
 
-      transcript = typeof transcriptValue === "string" ? transcriptValue : undefined;
-      title = typeof titleValue === "string" ? titleValue : undefined;
-      audioUrl = typeof audioUrlValue === "string" ? audioUrlValue : undefined;
-      templateName = typeof templateNameValue === "string" ? templateNameValue : undefined;
-      language = typeof languageValue === "string" ? languageValue : undefined;
-      uploadedFile = fileValue instanceof File ? fileValue : null;
+      transcript = fields.transcript || undefined;
+      title = fields.title || undefined;
+      audioUrl = fields.audioUrl || undefined;
+      templateName = fields.templateName || undefined;
+      language = fields.language || undefined;
+      uploadedFile = file;
     } else {
       const body = await request.json();
       ({ transcript, title, audioUrl, templateName, language } = body as {

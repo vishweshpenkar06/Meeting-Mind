@@ -22,6 +22,64 @@ export interface AIMeetingResult {
   followUps?: string[];
 }
 
+interface TranscriptionProvider {
+  name: string;
+  client: OpenAI;
+  model: string;
+}
+
+function getTranscriptionProviders(): TranscriptionProvider[] {
+  const providers: TranscriptionProvider[] = [];
+
+  if (process.env.NVIDIA_API_KEY) {
+    providers.push({
+      name: "nvidia",
+      client: new OpenAI({
+        apiKey: process.env.NVIDIA_API_KEY,
+        baseURL: "https://integrate.api.nvidia.com/v1",
+      }),
+      model: process.env.NVIDIA_TRANSCRIPTION_MODEL || "nvidia/parakeet-tdt-0.6b-v2",
+    });
+  }
+
+  if (process.env.GROQ_API_KEY) {
+    providers.push({
+      name: "groq",
+      client: new OpenAI({
+        apiKey: process.env.GROQ_API_KEY,
+        baseURL: "https://api.groq.com/openai/v1",
+      }),
+      model: process.env.GROQ_TRANSCRIPTION_MODEL || "whisper-large-v3-turbo",
+    });
+  }
+
+  return providers;
+}
+
+async function sendToTranscription(
+  provider: TranscriptionProvider,
+  buffer: Buffer,
+  mimeType: string,
+  fileName: string,
+  language?: string
+): Promise<string> {
+  console.log(`[transcribe] Sending to ${provider.name}: ${fileName}, type: ${mimeType}, size: ${(buffer.length / 1024).toFixed(0)}KB, language: ${language || "auto"}`);
+  const file = new File([new Uint8Array(buffer)], fileName, { type: mimeType });
+  const params: Record<string, unknown> = {
+    file,
+    model: provider.model,
+    response_format: "text",
+  };
+  if (language && language !== "auto") {
+    params.language = language;
+  }
+  const result = (await provider.client.audio.transcriptions.create(params as never)) as string | { text: string };
+
+  const text = typeof result === "string" ? result : result.text;
+  console.log(`[transcribe] ${provider.name} result: ${text?.length || 0} chars`);
+  return text;
+}
+
 export async function transcribeAudio(
   audioBlob: Blob,
   mimeType?: string,
@@ -33,68 +91,43 @@ export async function transcribeAudio(
   return transcribeMediaFile(inputBuffer, mimeType || audioBlob.type || "application/octet-stream", fileName, language);
 }
 
-async function sendToWhisper(
-  client: OpenAI,
-  buffer: Buffer,
-  mimeType: string,
-  fileName: string,
-  language?: string
-): Promise<string> {
-  console.log(`[whisper] Sending to Groq: ${fileName}, type: ${mimeType}, size: ${(buffer.length / 1024).toFixed(0)}KB, language: ${language || "auto"}`);
-  const file = new File([new Uint8Array(buffer)], fileName, { type: mimeType });
-  const params: Record<string, unknown> = {
-    file,
-    model: process.env.GROQ_TRANSCRIPTION_MODEL || "whisper-large-v3-turbo",
-    response_format: "text",
-  };
-  if (language && language !== "auto") {
-    params.language = language;
-  }
-  const result = (await client.audio.transcriptions.create(params as never)) as string | { text: string };
-
-  const text = typeof result === "string" ? result : result.text;
-  console.log(`[whisper] Transcription result: ${text?.length || 0} chars`);
-  return text;
-}
-
 export async function transcribeMediaFile(
   fileBuffer: Buffer,
   mimeType: string,
   fileName: string,
   language?: string
 ): Promise<string> {
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error("GROQ_API_KEY is not configured. Get one at https://console.groq.com");
+  const providers = getTranscriptionProviders();
+  if (providers.length === 0) {
+    throw new Error("No transcription provider configured. Set NVIDIA_API_KEY or GROQ_API_KEY in .env.local");
   }
 
-  const client = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY,
-    baseURL: "https://api.groq.com/openai/v1",
-  });
+  const extracted = await extractAudioFromFile(fileBuffer, mimeType, fileName);
+  const chunks = await splitAudioIntoChunks(extracted.buffer, extracted.mimeType, extracted.fileName);
 
-  try {
-    const extracted = await extractAudioFromFile(fileBuffer, mimeType, fileName);
-    const chunks = await splitAudioIntoChunks(extracted.buffer, extracted.mimeType, extracted.fileName);
-
-    const transcriptions = await Promise.all(
-      chunks.map(async (chunk) => {
-        return sendToWhisper(client, chunk.buffer, chunk.mimeType, chunk.fileName, language);
-      })
-    );
-
-    return transcriptions.join(" ").replace(/\s+/g, " ").trim();
-  } catch (extractionError) {
-    console.warn("Audio extraction failed, attempting direct transcription:", extractionError);
-
+  for (const provider of providers) {
     try {
-      const result = await sendToWhisper(client, fileBuffer, mimeType, fileName, language);
-      return result.replace(/\s+/g, " ").trim();
-    } catch (directError) {
-      console.error("Direct transcription also failed:", directError);
-      throw new Error(
-        `Transcription failed. Extraction error: ${extractionError instanceof Error ? extractionError.message : "unknown"}. ` +
-        `Direct error: ${directError instanceof Error ? directError.message : "unknown"}`
+      const transcriptions = await Promise.all(
+        chunks.map(async (chunk) => {
+          return sendToTranscription(provider, chunk.buffer, chunk.mimeType, chunk.fileName, language);
+        })
       );
+
+      return transcriptions.join(" ").replace(/\s+/g, " ").trim();
+    } catch (providerError) {
+      console.warn(`Transcription failed with ${provider.name}:`, providerError instanceof Error ? providerError.message : providerError);
     }
   }
+
+  for (const provider of providers) {
+    try {
+      console.warn(`[transcribe] All chunked transcription failed, trying direct transcription with ${provider.name}`);
+      const result = await sendToTranscription(provider, fileBuffer, mimeType, fileName, language);
+      return result.replace(/\s+/g, " ").trim();
+    } catch {
+      // continue to next provider
+    }
+  }
+
+  throw new Error(`Transcription failed with all providers (${providers.map((p) => p.name).join(", ")}). Check that your API keys are valid.`);
 }
