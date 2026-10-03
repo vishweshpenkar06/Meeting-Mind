@@ -14,15 +14,20 @@ export default function GoogleSignInButton({ redirectTo = "/dashboard", variant 
 
   const handleLogin = async () => {
     setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
-      },
-    });
-    if (error) {
-      console.error("Sign-in error:", error.message);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
+        },
+      });
+      if (error) {
+        console.error("Sign-in error:", error.message);
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("Sign-in failed:", err);
       setLoading(false);
     }
   };

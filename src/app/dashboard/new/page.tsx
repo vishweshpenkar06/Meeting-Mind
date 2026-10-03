@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, type ChangeEvent } from "react";
+import { useState, useRef, useEffect, type ChangeEvent } from "react";
 import {
   ArrowLeft,
   Upload,
@@ -16,13 +16,19 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import TemplateSelector from "@/components/TemplateSelector";
+import { getSampleAgenda, getSampleBriefing } from "@/lib/templates";
 
-type DemoResult = {
-  title: string;
-  summary: string;
-  decisions: Array<string | { decision?: string; context?: string }>;
-  actionItems: Array<{ owner: string; task: string; dueDate: string | null }>;
-};
+const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "ogg", "oga", "flac", "opus", "webm"];
+const VIDEO_EXTENSIONS = ["mp4", "mov", "mkv", "avi", "webm", "m4v", "mpg", "mpeg"];
+
+function pickRecordingMimeType(): string {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || "";
+}
+
+function extensionOf(file: File): string {
+  return file.name.toLowerCase().split(".").pop() || "";
+}
 
 export default function NewMeetingPage() {
   const router = useRouter();
@@ -41,7 +47,6 @@ export default function NewMeetingPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [agendaItems, setAgendaItems] = useState<string[]>([]);
   const [loadingAgenda, setLoadingAgenda] = useState(false);
-  const [demoResult, setDemoResult] = useState<DemoResult | null>(null);
   const [language, setLanguage] = useState("auto");
   const [briefing, setBriefing] = useState<{
     contextSummary: string;
@@ -52,10 +57,29 @@ export default function NewMeetingPage() {
   const [loadingBriefing, setLoadingBriefing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const templateAbortRef = useRef<AbortController | null>(null);
+  const templateRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+      templateAbortRef.current?.abort();
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   const isVideoFile = (file: File) =>
-    file.type.startsWith("video/") || ["mp4", "mov", "mkv", "avi", "webm", "m4v"].some((ext) => file.name.toLowerCase().endsWith(`.${ext}`));
+    file.type.startsWith("video/") || VIDEO_EXTENSIONS.includes(extensionOf(file));
+
+  const isAudioFile = (file: File) =>
+    file.type.startsWith("audio/") || AUDIO_EXTENSIONS.includes(extensionOf(file));
 
   const steps = [
     "Preparing your meeting",
@@ -72,7 +96,6 @@ export default function NewMeetingPage() {
     if (!checkValid()) return;
     setIsProcessing(true);
     setError(null);
-    setDemoResult(null);
     setProcessingStep(0);
 
     try {
@@ -114,23 +137,17 @@ export default function NewMeetingPage() {
       const meeting = await res.json();
       setProcessingStep(3);
 
-      if (meeting?.result) {
-        setDemoResult(meeting.result as DemoResult);
-        setIsProcessing(false);
-        setProcessingStep(0);
-        return;
-      }
-
       if (!meeting?.id) {
         throw new Error("Meeting was created but no ID was returned. Please check your dashboard.");
       }
 
-      setTimeout(() => {
-        router.push(`/meeting/${meeting.id}`);
+      if (!mountedRef.current) return;
+      redirectTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) router.push(`/meeting/${meeting.id}`);
       }, 600);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "TimeoutError") {
-        setError("The request timed out. Large video files can take several minutes to process. Try a smaller file or paste the transcript directly.");
+        setError("The request timed out. Large video files can take several minutes to process, and the meeting may still finish on the server — check your dashboard before retrying.");
       } else if (err instanceof TypeError && err.message.includes("fetch")) {
         setError("Network error. Check your connection and try again.");
       } else {
@@ -143,13 +160,25 @@ export default function NewMeetingPage() {
 
   const handleFileSelect = (file: File) => {
     const videoFile = isVideoFile(file);
-    const maxBytes = videoFile ? 500 * 1024 * 1024 : 25 * 1024 * 1024;
 
-    if (file.size > maxBytes) {
-      alert(`File too large. Maximum size is ${videoFile ? "500MB" : "25MB"}.`);
+    if (!videoFile && !isAudioFile(file)) {
+      setError(`"${file.name}" is not a supported audio or video file.`);
       return;
     }
 
+    const maxBytes = videoFile ? 500 * 1024 * 1024 : 25 * 1024 * 1024;
+
+    if (file.size === 0) {
+      setError("That file is empty. Record again or choose a different file.");
+      return;
+    }
+
+    if (file.size > maxBytes) {
+      setError(`File too large. Maximum size is ${videoFile ? "500MB" : "25MB"}.`);
+      return;
+    }
+
+    setError(null);
     setUploadKind(videoFile ? "screen" : "audio");
     setSelectedFile(file);
     setFileName(file.name);
@@ -160,6 +189,8 @@ export default function NewMeetingPage() {
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleFileSelect(file);
+    // Reset so re-picking the same file fires another change event
+    e.target.value = "";
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -184,8 +215,11 @@ export default function NewMeetingPage() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const mimeType = pickRecordingMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const actualType = recorder.mimeType || mimeType || "audio/webm";
       mediaRecorderRef.current = recorder;
+      streamRef.current = stream;
       chunksRef.current = [];
 
       recorder.ondataavailable = (e: { data: Blob }) => {
@@ -193,15 +227,23 @@ export default function NewMeetingPage() {
       };
 
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        handleFileSelect(new File([blob], "recording.webm", { type: "audio/webm" }));
         stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        if (!mountedRef.current) return;
+        if (chunksRef.current.length === 0) {
+          setError("No audio was captured. Please check your microphone and try again.");
+          return;
+        }
+        const blob = new Blob(chunksRef.current, { type: actualType });
+        const ext = actualType.includes("mp4") ? "m4a" : "webm";
+        handleFileSelect(new File([blob], `recording.${ext}`, { type: actualType }));
       };
 
       recorder.start();
+      setError(null);
       setIsRecording(true);
     } catch {
-      alert("Could not access microphone. Please check permissions.");
+      setError("Could not access microphone. Please check permissions.");
     }
   };
 
@@ -213,116 +255,64 @@ export default function NewMeetingPage() {
   };
 
   const handleTemplateSelect = (name: string | null) => {
+    // A slower response for a previously selected template must not win
+    templateAbortRef.current?.abort();
+    const controller = new AbortController();
+    templateAbortRef.current = controller;
+    const requestId = ++templateRequestRef.current;
+
     if (!name) {
       setSelectedTemplate(null);
       setBriefing(null);
       setAgendaItems([]);
+      setLoadingAgenda(false);
+      setLoadingBriefing(false);
       return;
     }
     setSelectedTemplate(name);
 
-    const sampleAgendas: Record<string, string[]> = {
-      general: [
-        "Review action items from last meeting",
-        "Discuss current project status",
-        "Address blockers and dependencies",
-        "Plan next steps and assignments",
-      ],
-      standup: [
-        "[Alice] What did you accomplish yesterday?",
-        "[Bob] What will you work on today?",
-        "[Carol] Any blockers or impediments?",
-      ],
-      retro: [
-        "Celebrate wins from this sprint",
-        "Identify what slowed us down",
-        "Propose process improvements",
-        "Define action items for next sprint",
-      ],
-      "one-on-one": [
-        "Personal check-in and mood",
-        "Recent accomplishments and feedback",
-        "Career goals and growth areas",
-        "Support needed from manager",
-      ],
-      "client-call": [
-        "Review current status and progress",
-        "Discuss client requirements and feedback",
-        "Confirm decisions and approvals",
-        "Define next steps and deliverables",
-      ],
-      brainstorm: [
-        "Define the problem or opportunity",
-        "Generate ideas freely (no judgment)",
-        "Vote on top ideas and assign owners",
-      ],
-    };
+    setAgendaItems(getSampleAgenda(name));
+    setBriefing(getSampleBriefing(name));
+    setLoadingAgenda(true);
+    setLoadingBriefing(true);
 
-    const sampleBriefings: Record<string, { contextSummary: string; pendingItems: string[]; suggestedTopics: string[]; risks: string[] }> = {
-      general: {
-        contextSummary: "Review recent meeting outcomes and pending action items to prepare for today's discussion.",
-        pendingItems: ["Review open action items from last 3 meetings", "Check sprint progress against goals"],
-        suggestedTopics: ["Project status update", "Blocker resolution", "Resource allocation"],
-        risks: ["Missed deadlines may impact timeline"],
-      },
-      standup: {
-        contextSummary: "Quick sync to align on daily priorities and identify blockers early.",
-        pendingItems: ["Review yesterday's commitments", "Check on in-progress tasks"],
-        suggestedTopics: ["Yesterday's accomplishments", "Today's priorities", "Current blockers"],
-        risks: ["Unreported blockers may delay sprint goals"],
-      },
-      retro: {
-        contextSummary: "Reflect on the sprint to identify process improvements and celebrate wins.",
-        pendingItems: ["Gather team feedback on last sprint", "Review velocity trends"],
-        suggestedTopics: ["Sprint velocity review", "Process bottlenecks", "Team morale check"],
-        risks: ["Recurring issues may indicate systemic problems"],
-      },
-      "one-on-one": {
-        contextSummary: "Prepare for a supportive, growth-focused conversation.",
-        pendingItems: ["Review last 1:1 action items", "Check on career goal progress"],
-        suggestedTopics: ["Well-being check-in", "Skill development", "Project interests"],
-        risks: ["Unaddressed concerns may affect retention"],
-      },
-      "client-call": {
-        contextSummary: "Prepare for client-facing discussion with focus on deliverables and commitments.",
-        pendingItems: ["Review open deliverables", "Check pending client approvals"],
-        suggestedTopics: ["Project status update", "Client feedback review", "Timeline confirmation"],
-        risks: ["Scope creep may affect deadline", "Client expectations may need realignment"],
-      },
-      brainstorm: {
-        contextSummary: "Prepare for creative ideation session focused on generating diverse solutions.",
-        pendingItems: ["Review previous brainstorm outcomes", "Gather research on topic"],
-        suggestedTopics: ["Problem framing", "Competitive analysis", "User needs exploration"],
-        risks: ["Groupthink may limit idea diversity"],
-      },
-    };
-
-    setAgendaItems(sampleAgendas[name] || sampleAgendas.general);
-    setBriefing(sampleBriefings[name] || sampleBriefings.general);
-    setLoadingAgenda(false);
-    setLoadingBriefing(false);
+    const isStale = () => controller.signal.aborted || requestId !== templateRequestRef.current;
 
     fetch("/api/meetings/generate-agenda", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ templateName: name }),
+      signal: controller.signal,
     })
-      .then((res) => res.json())
-      .then((data) => { if (data.items?.length > 0) setAgendaItems(data.items); })
-      .catch(() => {});
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isStale()) return;
+        if (data?.items?.length > 0) setAgendaItems(data.items);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!isStale()) setLoadingAgenda(false);
+      });
 
     fetch("/api/meetings/briefing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ templateName: name }),
+      signal: controller.signal,
     })
-      .then((res) => res.json())
-      .then((data) => { if (data?.contextSummary) setBriefing(data); })
-      .catch(() => {});
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isStale()) return;
+        if (data?.contextSummary) setBriefing(data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!isStale()) setLoadingBriefing(false);
+      });
   };
 
   return (
-    <div className="min-h-screen bg-bg-base max-w-[720px] mx-auto px-6 pt-8 pb-24">
+    <div className="page-shell page-container pt-8 pb-24">
       {/* Back */}
       <button
         onClick={() => router.push("/dashboard")}
@@ -335,7 +325,7 @@ export default function NewMeetingPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-1">
         <div>
-          <h1 className="font-[family:var(--font-syne)] font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
+          <h1 className="font-display font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
             {title ? title : "New Meeting"}
           </h1>
           <p className="text-text-secondary text-base">
@@ -435,7 +425,7 @@ export default function NewMeetingPage() {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="e.g. Product Sync"
-        className="w-full bg-bg-elevated/50 border border-border-subtle rounded-xl px-4 py-2.5 text-text-primary text-sm placeholder:text-text-muted mb-4 transition-colors focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_2px_rgba(79,142,247,0.1)]"
+        className="w-full bg-bg-elevated/50 border border-border-subtle rounded-xl px-4 py-2.5 text-text-primary text-sm placeholder:text-text-muted mb-4 transition-colors focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20"
       />
 
       {/* Language Selector */}
@@ -447,7 +437,7 @@ export default function NewMeetingPage() {
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            className="w-full appearance-none bg-bg-elevated/50 border border-border-subtle rounded-xl px-4 py-2.5 text-text-primary text-sm transition-colors focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_2px_rgba(79,142,247,0.1)] cursor-pointer"
+            className="w-full appearance-none bg-bg-elevated/50 border border-border-subtle rounded-xl px-4 py-2.5 text-text-primary text-sm transition-colors focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20 cursor-pointer"
           >
             <option value="auto">Auto-detect</option>
             <option value="en">English</option>
@@ -522,10 +512,10 @@ export default function NewMeetingPage() {
       {/* Upload Zone */}
       {inputMode === "upload" && !fileName ? (
         <div
-          className="border-2 border-dashed border-border-default bg-bg-surface rounded-[14px] px-8 py-16 text-center cursor-pointer hover:border-accent-primary hover:bg-[rgba(79,142,247,0.04)] transition-all duration-200"
+          className="border-2 border-dashed border-border-default bg-bg-surface rounded-xl px-8 py-16 text-center cursor-pointer hover:border-accent-primary hover:bg-accent-muted transition-all duration-200"
           style={{
             ...(isDragging
-              ? { borderColor: "#4F8EF7", backgroundColor: "rgba(79,142,247,0.08)", transform: "scale(1.01)" }
+              ? { borderColor: "var(--color-accent-primary)", backgroundColor: "var(--color-accent-muted)", transform: "scale(1.01)" }
               : {}),
           }}
           onDragEnter={handleDrag}
@@ -549,8 +539,8 @@ export default function NewMeetingPage() {
           </span>
         </div>
       ) : inputMode === "upload" && fileName ? (
-        <div className="bg-bg-surface border border-success/30 rounded-[14px] px-6 py-4 flex items-center gap-4 mb-6">
-          <div className="w-10 h-10 rounded-[10px] bg-success-muted flex items-center justify-center">
+        <div className="bg-bg-surface border border-success/30 rounded-xl px-6 py-4 flex items-center gap-4 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-success-muted flex items-center justify-center">
             <FileAudio className="w-5 h-5 text-success" />
           </div>
           <div className="flex-1 min-w-0">
@@ -583,7 +573,7 @@ export default function NewMeetingPage() {
           onChange={(e) => setTranscript(e.target.value)}
           rows={10}
           placeholder="Paste your meeting transcript here..."
-          className="w-full bg-bg-surface border border-border-default rounded-[10px] px-4 py-3 text-text-primary text-[14px] placeholder:text-text-muted resize-none transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[0_0_0_3px_rgba(79,142,247,0.15)] leading-relaxed font-[family:var(--font-jetbrains)] mb-8"
+          className="w-full bg-bg-surface border border-border-default rounded-lg px-4 py-3 text-text-primary text-[14px] placeholder:text-text-muted resize-none transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/15 leading-relaxed font-mono mb-8"
           style={{ fontSize: "13px" }}
         />
         </>
@@ -617,40 +607,6 @@ export default function NewMeetingPage() {
         </div>
       )}
 
-      {demoResult && (
-        <div className="mb-6 bg-bg-surface border border-border-subtle rounded-[14px] p-6 space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">Generated Notes Preview</h2>
-            <p className="text-sm text-text-muted mt-1">This preview was generated locally because you are not signed in. Sign in to save it to the database.</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.08em] text-text-secondary mb-2">Summary</p>
-            <p className="text-text-primary text-[15px] leading-[1.75] whitespace-pre-wrap">{demoResult.summary}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.08em] text-text-secondary mb-2">Key Decisions</p>
-            <ul className="space-y-2">
-              {demoResult.decisions.map((decision, index) => {
-                const text = typeof decision === "string" ? decision : decision.decision || JSON.stringify(decision);
-                return (
-                <li key={index} className="text-sm text-text-primary">- {text}</li>
-                );
-              })}
-            </ul>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.08em] text-text-secondary mb-2">Action Items</p>
-            <ul className="space-y-2">
-              {demoResult.actionItems.map((item, index) => (
-                <li key={index} className="text-sm text-text-primary">
-                  <span className="font-semibold">{item.owner}</span>: {item.task}
-                  {item.dueDate ? <span className="text-text-muted"> (due {item.dueDate})</span> : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
 
       {/* Process Button */}
       <button

@@ -44,6 +44,10 @@ export async function middleware(request: NextRequest) {
       !pathname.startsWith("/api/meetings/briefing"))
   ) {
     if (!user) {
+      // API callers get JSON; browsers get a redirect they can follow
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("redirectTo", pathname);
       return NextResponse.redirect(loginUrl);

@@ -17,18 +17,47 @@ export default function AnalyticsPage() {
   const router = useRouter();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/analytics")
-      .then((res) => res.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const res = await fetch("/api/analytics", { signal: controller.signal });
+        const payload = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error(payload?.error || `Request failed (${res.status})`);
+        }
+        if (!payload || !Array.isArray(payload.weeklyData)) {
+          throw new Error("Analytics response was malformed");
+        }
+
+        setData({
+          totalMeetings: payload.totalMeetings ?? 0,
+          totalMinutes: payload.totalMinutes ?? 0,
+          avgCompletionRate: payload.avgCompletionRate ?? 0,
+          avgSentiment: payload.avgSentiment ?? 0,
+          weeklyData: payload.weeklyData,
+          meetingTypes: payload.meetingTypes ?? {},
+        });
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setLoadError(err instanceof Error ? err.message : "Failed to load analytics");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
   }, []);
 
-  const maxHours = Math.max(...(data?.weeklyData.map((w) => w.hours) || [1]), 1);
+  const weeklyData = data?.weeklyData ?? [];
+  const maxHours = Math.max(...weeklyData.map((w) => w.hours), 1);
 
   return (
-    <div className="min-h-screen bg-bg-base max-w-[800px] mx-auto px-6 pt-8 pb-24">
+    <div className="page-shell page-container max-w-4xl pt-8 pb-24">
       {/* Back */}
       <button
         onClick={() => router.push("/dashboard")}
@@ -40,7 +69,7 @@ export default function AnalyticsPage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-[family:var(--font-syne)] font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
+        <h1 className="font-display font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
           Meeting Analytics
         </h1>
         <p className="text-text-secondary text-base mt-1">
@@ -51,6 +80,18 @@ export default function AnalyticsPage() {
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="text-text-muted text-sm">Loading analytics...</div>
+        </div>
+      ) : loadError ? (
+        <div className="text-center py-16">
+          <BarChart3 className="w-10 h-10 text-text-muted mx-auto mb-4 opacity-50" />
+          <h3 className="text-text-secondary font-semibold text-lg mb-2">Could not load analytics</h3>
+          <p className="text-text-muted text-sm mb-4">{loadError}</p>
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="text-sm text-accent-primary hover:underline transition-colors"
+          >
+            Back to Dashboard
+          </button>
         </div>
       ) : !data ? (
         <div className="text-center py-16">
@@ -72,7 +113,7 @@ export default function AnalyticsPage() {
           <div className="mb-8 bg-bg-surface border border-border-subtle rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-text-primary mb-6">Weekly Meeting Hours (last 8 weeks)</h3>
             <div className="flex items-end gap-2 h-32">
-              {data.weeklyData.map((w, i) => (
+              {weeklyData.map((w, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <span className="text-xs text-text-muted">{w.hours > 0 ? `${w.hours}h` : ""}</span>
                   <div className="w-full bg-bg-elevated rounded-t-sm relative overflow-hidden" style={{ height: "100%" }}>
@@ -80,7 +121,7 @@ export default function AnalyticsPage() {
                       className="absolute bottom-0 w-full rounded-t-sm transition-all duration-500"
                       style={{
                         height: `${(w.hours / maxHours) * 100}%`,
-                        background: w.hours > 2 ? "var(--gradient-hero)" : "#4F8EF7",
+                        background: w.hours > 2 ? "var(--gradient-hero)" : "var(--color-accent-primary)",
                         opacity: w.hours > 0 ? 0.8 : 0.3,
                       }}
                     />
@@ -95,9 +136,9 @@ export default function AnalyticsPage() {
           <div className="mb-8 bg-bg-surface border border-border-subtle rounded-2xl p-6">
             <h3 className="text-sm font-semibold text-text-primary mb-4">Meeting Types</h3>
             <div className="flex flex-wrap gap-3">
-              {Object.entries(data.meetingTypes).map(([type, count]) => (
+              {Object.entries(data.meetingTypes || {}).map(([type, count]) => (
                 <div key={type} className="bg-bg-elevated rounded-xl px-4 py-3 flex items-center gap-3">
-                  <div className="w-3 h-3 rounded-full" style={{ background: "#4F8EF7" }} />
+                  <div className="w-3 h-3 rounded-full" style={{ background: "var(--color-accent-primary)" }} />
                   <span className="text-sm text-text-primary capitalize">{type}</span>
                   <span className="text-xs text-text-muted">{count}</span>
                 </div>
@@ -115,8 +156,8 @@ export default function AnalyticsPage() {
                   left: `${data.avgSentiment < 0 ? 50 + data.avgSentiment / 2 : 50}%`,
                   width: `${Math.abs(data.avgSentiment) / 2}%`,
                   background: data.avgSentiment >= 0
-                    ? "linear-gradient(90deg, #34D399, #10B981)"
-                    : "linear-gradient(90deg, #F87171, #EF4444)",
+                    ? "linear-gradient(90deg, var(--color-success), var(--color-cat-3))"
+                    : "linear-gradient(90deg, var(--color-error), var(--color-error))",
                 }}
               />
               <div className="absolute left-1/2 w-0.5 h-full bg-bg-elevated" />
@@ -134,7 +175,7 @@ export default function AnalyticsPage() {
             <div className="space-y-3">
               {data.totalMeetings > 0 && (
                 <InsightCard
-                  color={data.avgCompletionRate >= 70 ? "#10B981" : data.avgCompletionRate >= 40 ? "#F59E0B" : "#EF4444"}
+                  color={data.avgCompletionRate >= 70 ? "var(--color-cat-3)" : data.avgCompletionRate >= 40 ? "var(--color-warning)" : "var(--color-error)"}
                   title="Task Completion"
                   value={data.avgCompletionRate >= 70 ? "Strong" : data.avgCompletionRate >= 40 ? "Needs Attention" : "Critical"}
                   detail={`${data.avgCompletionRate}% of action items completed`}
@@ -142,7 +183,7 @@ export default function AnalyticsPage() {
               )}
               {data.totalMinutes > 0 && (
                 <InsightCard
-                  color="#4F8EF7"
+                  color="var(--color-accent-primary)"
                   title="Meeting Load"
                   value={`${Math.round(data.totalMinutes / data.totalMeetings)}m avg`}
                   detail={`~${Math.round(data.totalMinutes / 60)}h total across ${data.totalMeetings} meetings`}
@@ -150,7 +191,7 @@ export default function AnalyticsPage() {
               )}
               {data.avgSentiment !== 0 && (
                 <InsightCard
-                  color={data.avgSentiment > 0 ? "#10B981" : "#EF4444"}
+                  color={data.avgSentiment > 0 ? "var(--color-cat-3)" : "var(--color-error)"}
                   title="Team Sentiment"
                   value={data.avgSentiment > 0 ? "Positive" : "Concerning"}
                   detail={`Score: ${data.avgSentiment > 0 ? "+" : ""}${data.avgSentiment}`}
@@ -173,7 +214,7 @@ function StatCard({ icon, value, label }: { icon: React.ReactNode; value: string
   return (
     <div className="bg-bg-surface border border-border-subtle rounded-xl px-5 py-4">
       <div className="text-text-muted mb-2">{icon}</div>
-      <div className="text-2xl font-bold text-text-primary font-[family:var(--font-syne)]">{value}</div>
+      <div className="text-2xl font-bold text-text-primary font-display">{value}</div>
       <div className="text-xs text-text-muted mt-0.5">{label}</div>
     </div>
   );

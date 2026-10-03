@@ -181,6 +181,9 @@ begin
     create policy "Users can update notes from their meetings"
       on public.meeting_notes for update
       using (exists (select 1 from public.meetings m where m.id = meeting_notes.meeting_id and m.user_id = auth.uid()));
+    create policy "Users can delete notes from their meetings"
+      on public.meeting_notes for delete
+      using (exists (select 1 from public.meetings m where m.id = meeting_notes.meeting_id and m.user_id = auth.uid()));
   end if;
 end $$;
 
@@ -196,6 +199,12 @@ begin
     create policy "Users can insert segments for their meetings"
       on public.transcript_segments for insert
       with check (exists (select 1 from public.meetings m where m.id = transcript_segments.meeting_id and m.user_id = auth.uid()));
+    create policy "Users can update segments from their meetings"
+      on public.transcript_segments for update
+      using (exists (select 1 from public.meetings m where m.id = transcript_segments.meeting_id and m.user_id = auth.uid()));
+    create policy "Users can delete segments from their meetings"
+      on public.transcript_segments for delete
+      using (exists (select 1 from public.meetings m where m.id = transcript_segments.meeting_id and m.user_id = auth.uid()));
   end if;
 end $$;
 
@@ -234,6 +243,16 @@ begin
   if not exists (select 1 from pg_policies where policyname = 'Users can view own quality metrics') then
     create policy "Users can view own quality metrics"
       on public.meeting_quality_metrics for select
+      using (
+        exists (select 1 from public.meetings m where m.id = meeting_quality_metrics.meeting_id and m.user_id = auth.uid())
+      );
+    create policy "Users can insert own quality metrics"
+      on public.meeting_quality_metrics for insert
+      with check (
+        exists (select 1 from public.meetings m where m.id = meeting_quality_metrics.meeting_id and m.user_id = auth.uid())
+      );
+    create policy "Users can update own quality metrics"
+      on public.meeting_quality_metrics for update
       using (
         exists (select 1 from public.meetings m where m.id = meeting_quality_metrics.meeting_id and m.user_id = auth.uid())
       );

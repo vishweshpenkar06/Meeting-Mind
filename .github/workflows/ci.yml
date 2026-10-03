@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint -- src
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+        env:
+          # next/font/google fetches at build time; CI has no .env.local
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  # The API compiles the ffmpeg binary into the server bundle, so a build that
+  # only passes on a machine with it cached would be a false green.
+  no-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Ensure no secrets are committed
+        run: |
+          if git ls-files --error-unmatch .env.local 2>/dev/null; then
+            echo "::error::.env.local is tracked in git"; exit 1
+          fi
+          if git grep -lE 'sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{20,}' -- . ':!package-lock.json'; then
+            echo "::error::possible API key committed"; exit 1
+          fi

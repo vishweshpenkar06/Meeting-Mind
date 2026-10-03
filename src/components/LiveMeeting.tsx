@@ -10,62 +10,91 @@ interface TranscriptSegment {
   timestamp: Date;
 }
 
+function pickRecordingMimeType(): string {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || "";
+}
+
 export default function LiveMeetingPage() {
   const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [meetingId, setMeetingId] = useState<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const segmentsRef = useRef<TranscriptSegment[]>([]);
   const queueRef = useRef<Blob[]>([]);
   const isProcessingRef = useRef(false);
+  // Read through a ref so the recorder callbacks below never close over a stale meetingId
+  const meetingIdRef = useRef<string | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [segments]);
 
+  const appendSegment = (text: string) => {
+    const seg: TranscriptSegment = {
+      id: crypto.randomUUID(),
+      text,
+      timestamp: new Date(),
+    };
+    segmentsRef.current.push(seg);
+    if (mountedRef.current) setSegments([...segmentsRef.current]);
+  };
+
+  const transcribeChunk = async (chunk: Blob, id: string | null): Promise<string | null> => {
+    const formData = new FormData();
+    formData.append("audio", new File([chunk], "segment.webm", { type: chunk.type || "audio/webm" }));
+    if (id) formData.append("meetingId", id);
+
+    const res = await fetch("/api/transcribe-segment", { method: "POST", body: formData });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Transcription failed (${res.status})`);
+    }
+    const data = await res.json();
+    return data.text || null;
+  };
+
   const processQueue = useCallback(async () => {
-    if (isProcessingRef.current || queueRef.current.length === 0 || !meetingId) return;
+    const id = meetingIdRef.current;
+    if (isProcessingRef.current || queueRef.current.length === 0 || !id) return;
     isProcessingRef.current = true;
-    setIsTranscribing(true);
+    if (mountedRef.current) setIsTranscribing(true);
 
     try {
       const chunk = queueRef.current.shift()!;
-      const formData = new FormData();
-      formData.append("audio", new File([chunk], "segment.webm", { type: "audio/webm" }));
-      formData.append("meetingId", meetingId);
-
-      const res = await fetch("/api/transcribe-segment", { method: "POST", body: formData });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Transcription failed (${res.status})`);
-      }
-
-      const data = await res.json();
-      if (data.text) {
-        const seg: TranscriptSegment = {
-          id: crypto.randomUUID(),
-          text: data.text,
-          timestamp: new Date(),
-        };
-        segmentsRef.current.push(seg);
-        setSegments([...segmentsRef.current]);
-      }
+      const text = await transcribeChunk(chunk, id);
+      if (text) appendSegment(text);
     } catch (err) {
       console.error("Segment error:", err);
-      const msg = err instanceof Error ? err.message : "Transcription error";
-      setError(msg);
+      if (mountedRef.current) setError(err instanceof Error ? err.message : "Transcription error");
     } finally {
       isProcessingRef.current = false;
-      setIsTranscribing(false);
-      setTimeout(() => processQueue(), 500);
+      if (mountedRef.current) setIsTranscribing(false);
+      if (mountedRef.current && queueRef.current.length > 0 && meetingIdRef.current) {
+        retryTimerRef.current = setTimeout(() => processQueue(), 500);
+      }
     }
-  }, [meetingId]);
+  }, []);
 
   const startMeeting = async () => {
+    let createdMeetingId: string | null = null;
+
     try {
       // Create a empty meeting in `live` type
       const res = await fetch("/api/meetings", {
@@ -76,10 +105,13 @@ export default function LiveMeetingPage() {
 
       if (!res.ok) throw new Error("Failed to create meeting");
       const meeting = await res.json();
-      setMeetingId(meeting.id);
+      createdMeetingId = meeting.id;
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mimeType = pickRecordingMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      meetingIdRef.current = createdMeetingId;
 
       recorder.ondataavailable = (e: BlobEvent) => {
         if (e.data.size > 100) {
@@ -88,71 +120,87 @@ export default function LiveMeetingPage() {
         }
       };
 
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-      };
-
       recorder.start(5000);
       mediaRecorderRef.current = recorder;
+      streamRef.current = stream;
       setIsRecording(true);
       setError(null);
-    } catch {
+    } catch (err) {
+      console.error("Could not start recording:", err);
+      // Never leave an orphaned "Live Meeting" row behind a failed permission prompt
+      if (createdMeetingId) {
+        await fetch(`/api/meetings/${createdMeetingId}`, { method: "DELETE" }).catch(() => {});
+      }
+      meetingIdRef.current = null;
       setError("Could not start recording. Check microphone permissions.");
     }
   };
 
   const stopMeeting = async () => {
-    if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
+    const recorder = mediaRecorderRef.current;
+    const finalChunk = new Promise<Blob | null>((resolve) => {
+      if (!recorder || recorder.state === "inactive") {
+        resolve(null);
+        return;
+      }
+      // stop() fires one last ondataavailable; wait for it so the tail is not dropped
+      recorder.addEventListener("dataavailable", (e) => resolve(e.data.size > 100 ? e.data : null), { once: true });
+      recorder.addEventListener("stop", () => resolve(null), { once: true });
+      recorder.stop();
+    });
+
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
     setIsRecording(false);
+
     // Wait for any in-flight transcription to finish (with timeout)
     let waited = 0;
     while (isProcessingRef.current && waited < 10000) {
-      // wait up to 10s
       await new Promise((r) => setTimeout(r, 300));
       waited += 300;
+    }
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
     }
 
     // Flush remaining queue safely (copy then clear to avoid races)
     const remaining = [...queueRef.current];
     queueRef.current = [];
 
+    const tail = await finalChunk;
+    if (tail) remaining.push(tail);
+
     for (const chunk of remaining) {
       try {
-        const formData = new FormData();
-        formData.append("audio", new File([chunk], "segment.webm", { type: "audio/webm" }));
-        if (meetingId) formData.append("meetingId", meetingId);
-        const res = await fetch("/api/transcribe-segment", { method: "POST", body: formData });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.text) {
-            const seg: TranscriptSegment = {
-              id: crypto.randomUUID(),
-              text: data.text,
-              timestamp: new Date(),
-            };
-            segmentsRef.current.push(seg);
-            setSegments([...segmentsRef.current]);
-          }
-        }
+        const text = await transcribeChunk(chunk, meetingIdRef.current);
+        if (text) appendSegment(text);
       } catch (e) {
         console.error("Flush segment error:", e);
       }
     }
 
+    const id = meetingIdRef.current;
     const fullText = segmentsRef.current.map((s) => s.text).join(" ");
-    if (fullText && meetingId) {
+    if (fullText && id) {
       try {
-        await fetch(`/api/meetings/${meetingId}`, {
+        const res = await fetch(`/api/meetings/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ raw_transcript: fullText }),
         });
+        if (!res.ok) {
+          setError("Could not save the transcript. Please retry from the meeting page.");
+          return;
+        }
       } catch (err) {
         console.error("Failed to update transcript:", err);
+        setError("Could not save the transcript. Please retry from the meeting page.");
+        return;
       }
-      router.push(`/meeting/${meetingId}`);
-    } else if (meetingId) {
-      // No transcript captured — navigate back to dashboard with error
+      router.push(`/meeting/${id}`);
+    } else if (id) {
+      await fetch(`/api/meetings/${id}`, { method: "DELETE" }).catch(() => {});
       setError("No transcript was captured. Please check your microphone and try again.");
       router.push("/dashboard");
     }
@@ -162,7 +210,7 @@ export default function LiveMeetingPage() {
     date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div className="min-h-screen bg-bg-base max-w-[720px] mx-auto px-6 pt-8 pb-24">
+    <div className="page-shell page-container pt-8 pb-24">
       {/* Back */}
       <button
         onClick={() => router.push("/dashboard")}
@@ -175,7 +223,7 @@ export default function LiveMeetingPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="font-[family:var(--font-syne)] font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
+          <h1 className="font-display font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
             Live Recording
           </h1>
           <p className="text-text-secondary text-base mt-1">
@@ -222,7 +270,7 @@ export default function LiveMeetingPage() {
             <span className="text-text-muted text-sm">Ready to record</span>
           )}
           {segments.length > 0 && (
-            <span className="text-text-muted text-xs font-[family:var(--font-jetbrains)]">
+            <span className="text-text-muted text-xs font-mono">
               {segments.reduce((s, seg) => s + seg.text.split(" ").length, 0)} words
             </span>
           )}
@@ -264,7 +312,7 @@ export default function LiveMeetingPage() {
           <div key={seg.id} className="bg-bg-surface rounded-xl px-4 py-3 border border-border-subtle"
             style={{ animation: "fadeInUp 0.3s ease both" }}>
             <div className="flex items-start gap-3">
-              <span className="text-xs text-text-muted font-[family:var(--font-jetbrains)] mt-0.5 flex-shrink-0">
+              <span className="text-xs text-text-muted font-mono mt-0.5 flex-shrink-0">
                 {formatTime(seg.timestamp)}
               </span>
               <p className="text-text-primary text-sm leading-relaxed flex-1">{seg.text}</p>

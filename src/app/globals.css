@@ -1,129 +1,208 @@
 @import "tailwindcss";
 
 @theme inline {
+  /* Surfaces — three elevation layers, darkest to lightest */
   --color-bg-base: #0B0F14;
   --color-bg-surface: #111820;
   --color-bg-elevated: #1A2333;
+  --color-bg-inset: #080B10;
+
+  /* Borders — low-alpha white reads as depth without a second grey ramp */
   --color-border-subtle: #1E2D40;
   --color-border-default: #2A3F57;
-  --color-text-primary: #EDF2FF;
-  --color-text-secondary: #8A9BB5;
-  --color-text-muted: #4A5E78;
+  --color-border-strong: #3D5878;
+
+  /* Text — every step below passes WCAG AA (4.5:1) against bg-elevated,
+     the lightest surface any of them is placed on. Verified, do not
+     darken without re-running the contrast check. */
+  --color-text-primary: #EDF2FF;    /* 14.07:1 on bg-elevated */
+  --color-text-secondary: #A8B8CE;  /*  7.82:1 */
+  --color-text-muted: #8499C0;      /*  5.48:1 */
   --color-text-inverse: #0B0F14;
+
+  /* Brand */
   --color-accent-primary: #4F8EF7;
   --color-accent-primary-hover: #6BA3FF;
+  --color-accent-primary-active: #3B72D4;
+  --color-accent-muted: #12233D;
   --color-accent-purple: #8B5CF6;
   --color-accent-purple-muted: #2D1F5E;
+  --color-accent-cyan: #06B6D4;
+  --color-accent-cyan-muted: #0A2B33;
+
+  /* Semantic */
   --color-success: #34D399;
   --color-success-muted: #0D3325;
   --color-warning: #FBBF24;
   --color-warning-muted: #2D2007;
   --color-error: #F87171;
   --color-error-muted: #2D0F0F;
+  --color-info: #4F8EF7;
+  --color-info-muted: #12233D;
+
+  /* Categorical scale — speaker identity, template identity, chart series.
+     One source of truth for the 6-hue palette that was previously
+     duplicated across four components. Derive tints with color-mix()
+     rather than declaring a bg/border/dot variant per hue. */
+  --color-cat-1: #4F8EF7;
+  --color-cat-2: #8B5CF6;
+  --color-cat-3: #10B981;
+  --color-cat-4: #F59E0B;
+  --color-cat-5: #EF4444;
+  --color-cat-6: #06B6D4;
+
+  /* Gradients */
   --gradient-hero: linear-gradient(135deg, #4F8EF7 0%, #8B5CF6 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%);
   --gradient-shimmer: linear-gradient(90deg, transparent 0%, rgba(79, 142, 247, 0.08) 50%, transparent 100%);
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
-  --shadow-glow: 0 0 24px rgba(79,142,247,0.15);
+
+  /* Shadows — layered: tight+dark for depth, wide+soft for ambient */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-glow: 0 0 24px rgba(79, 142, 247, 0.15);
+  --shadow-glow-strong: 0 0 32px rgba(79, 142, 247, 0.3);
+
+  /* Type */
   --font-display: var(--font-space-grotesk);
   --font-body: var(--font-dm-sans);
   --font-mono: var(--font-jetbrains);
+
+  /* Radii — the product uses one radius for everything */
+  --radius-card: 12px;
+  --radius-control: 10px;
+  --radius-pill: 9999px;
+
+  /* Layout */
   --content-max-width: 720px;
-  --nav-height: 64px;
+  --content-max-wide: 1200px;
+  --nav-height: 56px;
+
+  /* Motion — see prefers-reduced-motion block at the end of this file */
+  --ease-out-quart: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
 }
 
 body {
-  background: #0B0F14;
-  color: #EDF2FF;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
   font-family: var(--font-dm-sans), sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
 }
 
-/* Dot grid pattern for backgrounds */
-.dot-grid {
-  background-image: radial-gradient(circle, #1E2D40 1px, transparent 1px);
-  background-size: 24px 24px;
+/* Focus — one visible ring everywhere, never removed without a replacement */
+:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
 }
 
-/* Custom scrollbar */
+::selection {
+  background: rgba(79, 142, 247, 0.3);
+  color: var(--color-text-primary);
+}
+
+/* Scrollbars */
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2A3F57;
-  border-radius: 9999px;
+  background: var(--color-border-default);
+  border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4F8EF7;
+  background: var(--color-accent-primary);
 }
 
-/* Text selection */
-::selection {
-  background: rgba(79, 142, 247, 0.3);
-  color: #EDF2FF;
+/* Decorative background pattern */
+.dot-grid {
+  background-image: radial-gradient(circle, #1E2D40 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
-/* Focus visible outline */
-:focus-visible {
-  outline: 2px solid #4F8EF7;
-  outline-offset: 2px;
-  border-radius: 12px;
+/* Shared layout shell — replaces per-page `min-h-screen bg-bg-base` */
+.page-shell {
+  min-height: 100vh;
+  background: var(--color-bg-base);
+}
+.page-container {
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+.page-container-wide {
+  max-width: var(--content-max-wide);
 }
 
-/* Smooth transitions */
-* {
-  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+/* Floating surfaces always sit on a blurred backdrop */
+.surface-float {
+  background: color-mix(in oklab, var(--color-bg-surface) 80%, transparent);
+  backdrop-filter: blur(12px);
 }
 
-/* Toast slide-in animation */
+/* Animation keyframes */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 @keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
 }
-
 @keyframes toast-out {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(100%);
-  }
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(100%); }
 }
-
-/* Modal fade-in */
 @keyframes modal-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
-
-/* Subtle float animation */
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }
-
-/* Pulse dot for recording */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+/* Loading skeleton — geometry matches the content it stands in for */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-elevated) 25%,
+    var(--color-border-subtle) 50%,
+    var(--color-bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-control);
+}
+
+/* Reduced motion — kill animation and long transitions, keep colour fades
+   short enough to read as a state change rather than movement */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

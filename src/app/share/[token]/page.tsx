@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { formatLocalDate, formatShortDate } from "@/lib/dates";
 import Link from "next/link";
 
 async function getSharedMeeting(token: string) {
@@ -33,7 +34,7 @@ export default async function SharedMeetingPage({
 
   if (!meeting) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-base px-6">
+      <div className="page-shell flex items-center justify-center px-6">
         <div className="text-center max-w-sm">
           <div className="text-5xl mb-6 opacity-30">{"\u{1F50D}"}</div>
           <h1 className="text-2xl font-semibold text-text-primary mb-2">
@@ -51,19 +52,15 @@ export default async function SharedMeetingPage({
   const decisions = meeting.key_decisions || [];
 
   return (
-    <div className="min-h-screen bg-bg-base">
-      <div className="max-w-[720px] mx-auto px-6 pt-12 pb-24">
+    <div className="page-shell">
+      <div className="page-container pt-12 pb-24">
         {/* Meeting Header */}
         <div className="mb-8">
-          <h1 className="font-[family:var(--font-syne)] font-bold text-[28px] text-text-primary" style={{ lineHeight: "1.15" }}>
+          <h1 className="font-display font-bold text-[28px] text-text-primary" style={{ lineHeight: "1.15" }}>
             {meeting.title}
           </h1>
-          <p className="text-text-muted text-sm font-[family:var(--font-jetbrains)] mt-1">
-            {new Date(meeting.created_at).toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
+          <p className="text-text-muted text-sm font-mono mt-1">
+            {formatLocalDate(meeting.created_at)}
           </p>
           <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent-purple-muted/50 text-accent-purple text-xs font-medium">
             {"\u{1F517}"} Shared with you
@@ -134,8 +131,8 @@ export default async function SharedMeetingPage({
                     <div
                       className="w-[18px] h-[18px] rounded border-2 flex-shrink-0"
                       style={{
-                        borderColor: item.is_completed ? "#34D399" : "#2A3F57",
-                        backgroundColor: item.is_completed ? "#34D399" : "transparent",
+                        borderColor: item.is_completed ? "var(--color-success)" : "var(--color-border-default)",
+                        backgroundColor: item.is_completed ? "var(--color-success)" : "transparent",
                       }}
                     >
                       {item.is_completed && (
@@ -146,19 +143,19 @@ export default async function SharedMeetingPage({
                     </div>
                     <span
                       className="text-xs font-semibold px-2.5 py-0.5 rounded-sm flex-shrink-0"
-                      style={{ backgroundColor: "rgba(45, 31, 94, 0.6)", color: "#8B5CF6" }}
+                      style={{ backgroundColor: "var(--color-accent-purple-muted)", color: "var(--color-accent-purple)" }}
                     >
                       {item.owner_name}
                     </span>
                     <span
                       className="flex-1 text-[14px]"
-                      style={{ color: item.is_completed ? "#4A5E78" : "#EDF2FF" }}
+                      style={{ color: item.is_completed ? "var(--color-text-muted)" : "var(--color-text-primary)" }}
                     >
                       {item.task_description}
                     </span>
-                    <span className="text-xs font-[family:var(--font-jetbrains)] text-text-muted flex-shrink-0">
+                    <span className="text-xs font-mono text-text-muted flex-shrink-0">
                       {item.due_date
-                        ? new Date(item.due_date).toLocaleDateString()
+                        ? formatShortDate(item.due_date)
                         : "No deadline"}
                     </span>
                   </div>

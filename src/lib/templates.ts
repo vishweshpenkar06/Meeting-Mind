@@ -140,12 +140,30 @@ export function getTemplate(name?: string): MeetingTemplate | undefined {
   return DEFAULT_TEMPLATES.find((t) => t.name === name);
 }
 
+/**
+ * Prompt context for a template name. Custom templates live in the database and
+ * are resolved by the caller (the built-in map has no entry for them), so this
+ * returns undefined rather than falling back — falling back would silently
+ * analyse a custom-template meeting with the general prompt.
+ */
+export function builtInPromptContext(name?: string | null): string | undefined {
+  if (!name) return undefined;
+  return DEFAULT_TEMPLATES.find((t) => t.name === name)?.aiPromptContext;
+}
+
+export interface BriefingResult {
+  contextSummary: string;
+  pendingItems: string[];
+  suggestedTopics: string[];
+  risks: string[];
+}
+
 export function getSampleAgenda(name: string): string[] {
   const template = DEFAULT_TEMPLATES.find((t) => t.name === name);
   return template?.sampleAgenda || DEFAULT_TEMPLATES[0].sampleAgenda || [];
 }
 
-export function getSampleBriefing(name: string) {
+export function getSampleBriefing(name: string): BriefingResult {
   const template = DEFAULT_TEMPLATES.find((t) => t.name === name);
-  return template?.sampleBriefing || DEFAULT_TEMPLATES[0].sampleBriefing;
+  return template?.sampleBriefing || DEFAULT_TEMPLATES[0].sampleBriefing!;
 }

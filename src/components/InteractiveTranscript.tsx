@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { ChevronDown, ChevronUp, Clock, Search, X } from "lucide-react";
+import { speakerColor } from "@/lib/palette";
 
 interface TranscriptSegment {
   id: string;
@@ -19,21 +20,6 @@ interface GroupedSegment {
     start_time: number | null;
     end_time: number | null;
   }>;
-}
-
-const SPEAKER_COLORS: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  "Speaker A": { bg: "rgba(79, 142, 247, 0.1)", text: "#4F8EF7", border: "rgba(79, 142, 247, 0.2)", dot: "#4F8EF7" },
-  "Speaker B": { bg: "rgba(139, 92, 246, 0.1)", text: "#8B5CF6", border: "rgba(139, 92, 246, 0.2)", dot: "#8B5CF6" },
-  "Speaker C": { bg: "rgba(16, 185, 129, 0.1)", text: "#10B981", border: "rgba(16, 185, 129, 0.2)", dot: "#10B981" },
-  "Speaker D": { bg: "rgba(245, 158, 11, 0.1)", text: "#F59E0B", border: "rgba(245, 158, 11, 0.2)", dot: "#F59E0B" },
-  "Speaker E": { bg: "rgba(239, 68, 68, 0.1)", text: "#EF4444", border: "rgba(239, 68, 68, 0.2)", dot: "#EF4444" },
-  "Speaker F": { bg: "rgba(6, 182, 212, 0.1)", text: "#06B6D4", border: "rgba(6, 182, 212, 0.2)", dot: "#06B6D4" },
-};
-
-const DEFAULT_COLOR = { bg: "rgba(138, 155, 181, 0.1)", text: "#8A9BB5", border: "rgba(138, 155, 181, 0.2)", dot: "#8A9BB5" };
-
-function getSpeakerColor(speaker: string) {
-  return SPEAKER_COLORS[speaker] || DEFAULT_COLOR;
 }
 
 function formatTimestamp(seconds: number): string {
@@ -73,11 +59,9 @@ function groupBySpeaker(segments: TranscriptSegment[]): GroupedSegment[] {
 }
 
 export default function InteractiveTranscript({ segments }: { segments: TranscriptSegment[] }) {
-  const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>(() => {
-    const initial: Record<number, boolean> = {};
-    segments.forEach((_, i) => { initial[i] = true; });
-    return initial;
-  });
+  // Keyed by a stable group identity, not an index, so search filtering cannot
+  // reattach expansion state to the wrong speaker
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
@@ -95,18 +79,20 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
       .filter((group) => group.messages.length > 0);
   }, [grouped, searchQuery]);
 
-  const toggleGroup = (index: number) => {
-    setExpandedGroups((prev) => ({ ...prev, [index]: !prev[index] }));
+  const isGroupExpanded = (group: (typeof grouped)[number]) =>
+    expandedGroups[`${group.speaker}::${group.messages[0]?.id ?? ""}`] ?? true;
+
+  const toggleGroup = (group: (typeof grouped)[number]) => {
+    const key = `${group.speaker}::${group.messages[0]?.id ?? ""}`;
+    setExpandedGroups((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }));
   };
 
-  const expandAll = () => {
-    const next: Record<number, boolean> = {};
-    filteredGrouped.forEach((_, i) => { next[i] = true; });
+  const setAll = (value: boolean) => {
+    const next: Record<string, boolean> = {};
+    filteredGrouped.forEach((group) => {
+      next[`${group.speaker}::${group.messages[0]?.id ?? ""}`] = value;
+    });
     setExpandedGroups(next);
-  };
-
-  const collapseAll = () => {
-    setExpandedGroups({});
   };
 
   if (segments.length === 0) {
@@ -127,14 +113,14 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
           </span>
           <div className="flex items-center gap-1.5 ml-2">
             {uniqueSpeakers.map((speaker) => {
-              const color = getSpeakerColor(speaker);
+              const color = speakerColor(speaker);
               return (
                 <span
                   key={speaker}
                   className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: color.bg, color: color.text, border: `1px solid ${color.border}` }}
+                  style={{ backgroundColor: color.bg, color: color.solid, border: `1px solid ${color.border}` }}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color.dot }} />
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color.solid }} />
                   {speaker}
                 </span>
               );
@@ -150,13 +136,13 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
             {showSearch ? <X className="w-3.5 h-3.5" /> : <Search className="w-3.5 h-3.5" />}
           </button>
           <button
-            onClick={expandAll}
+            onClick={() => setAll(true)}
             className="text-[11px] text-text-muted hover:text-accent-primary px-2 py-1 rounded transition-colors"
           >
             Expand all
           </button>
           <button
-            onClick={collapseAll}
+            onClick={() => setAll(false)}
             className="text-[11px] text-text-muted hover:text-accent-primary px-2 py-1 rounded transition-colors"
           >
             Collapse all
@@ -192,13 +178,13 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
       {/* Conversation thread */}
       <div className="space-y-4">
         {filteredGrouped.map((group, groupIndex) => {
-          const color = getSpeakerColor(group.speaker);
-          const isExpanded = expandedGroups[groupIndex] ?? true;
+          const color = speakerColor(group.speaker);
+          const isExpanded = isGroupExpanded(group);
           const messageCount = group.messages.length;
 
           return (
             <div
-              key={groupIndex}
+              key={`${group.speaker}::${group.messages[0]?.id ?? groupIndex}`}
               className="rounded-xl overflow-hidden transition-all duration-200"
               style={{
                 backgroundColor: color.bg,
@@ -208,17 +194,17 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
             >
               {/* Speaker header */}
               <button
-                onClick={() => toggleGroup(groupIndex)}
+                onClick={() => toggleGroup(group)}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02] transition-colors"
               >
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                  style={{ backgroundColor: color.dot, color: "#0B0F14" }}
+                  style={{ backgroundColor: color.solid, color: "var(--color-text-inverse)" }}
                 >
                   {group.speaker.replace("Speaker ", "")}
                 </div>
                 <div className="flex-1 text-left">
-                  <span className="text-sm font-semibold" style={{ color: color.text }}>
+                  <span className="text-sm font-semibold" style={{ color: color.solid }}>
                     {group.speaker}
                   </span>
                   <span className="text-xs text-text-muted ml-2">
@@ -245,7 +231,7 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
                         {(msg.start_time !== null || msg.end_time !== null) && (
                           <div className="flex items-center gap-1.5 mt-1.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
                             <Clock className="w-3 h-3 text-text-muted" />
-                            <span className="text-[11px] text-text-muted font-[family:var(--font-jetbrains)]">
+                            <span className="text-[11px] text-text-muted font-mono">
                               {msg.start_time !== null ? formatTimestamp(msg.start_time) : "0:00"}
                               {msg.end_time !== null ? ` - ${formatTimestamp(msg.end_time)}` : ""}
                             </span>

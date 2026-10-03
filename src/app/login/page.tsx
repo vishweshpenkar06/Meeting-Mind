@@ -10,7 +10,7 @@ function LoginForm() {
   const redirectTo = searchParams.get("redirectTo") || "/dashboard";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg-base px-6 relative overflow-hidden">
+    <div className="page-shell flex items-center justify-center px-6 relative overflow-hidden">
       <div className="absolute inset-0 dot-grid opacity-20 pointer-events-none" />
 
       <div className="relative z-10 text-center max-w-sm w-full">
@@ -21,12 +21,12 @@ function LoginForm() {
           >
             M
           </div>
-          <span className="font-[family:var(--font-space-grotesk)] font-bold text-2xl text-text-primary">
+          <span className="font-display font-bold text-2xl text-text-primary">
             MeetingMind
           </span>
         </div>
 
-        <h1 className="font-[family:var(--font-space-grotesk)] font-bold text-xl text-text-primary mb-3">
+        <h1 className="font-display font-bold text-xl text-text-primary mb-3">
           Sign in to your workspace
         </h1>
         <p className="text-text-secondary mb-8 text-sm leading-relaxed">

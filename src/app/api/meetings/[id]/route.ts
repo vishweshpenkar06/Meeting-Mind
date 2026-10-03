@@ -75,6 +75,23 @@ export async function GET(
       }
     } catch (e) { console.warn("meeting_notes table may not exist:", e); }
 
+    if (!isOwner) {
+      const { raw_transcript, user_id, embedding, ...publicMeeting } = meeting;
+      void raw_transcript;
+      void user_id;
+      void embedding;
+
+      // Public share viewers get the same surface as /share/[token]: no raw transcript, no segments
+      return NextResponse.json({
+        ...publicMeeting,
+        action_items: actionItems,
+        key_decisions: keyDecisions,
+        keyTopics,
+        risks,
+        followUps,
+      });
+    }
+
     try {
       const { data, error: segErr } = await supabase.from("transcript_segments").select("*").eq("meeting_id", id).order("created_at", { ascending: true });
       if (segErr) console.warn("transcript_segments query failed:", segErr.message);

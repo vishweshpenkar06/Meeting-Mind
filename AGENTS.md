@@ -58,6 +58,7 @@ src/
 ├── lib/
 │   ├── ai-providers.ts         # Multi-provider AI with fallback chain
 │   ├── audio-extractor.ts      # FFmpeg video-to-audio + chunking
+│   ├── dates.ts                # Local-date parsing for Postgres `date` columns
 │   ├── exports.ts              # PDF/Markdown/Text/Slack export
 │   ├── templates.ts            # Meeting templates
 │   ├── transcription.ts        # Groq Whisper transcription
@@ -69,7 +70,7 @@ src/
 
 ## Key Architecture Decisions
 
-1. **Multi-provider AI fallback**: OpenAI → Groq → OpenRouter → Ollama. Each provider is tried in order; if one fails, the next is attempted. If all fail, a basic heuristic-based fallback generates notes.
+1. **Multi-provider AI fallback**: NVIDIA NIM → OpenAI → Groq → OpenRouter → Ollama. Each provider is tried in order; if one fails, the next is attempted. If all fail, a basic heuristic-based fallback generates notes.
 
 2. **Audio processing pipeline**: Files are extracted via FFmpeg (video→audio), chunked if >23MB, then transcribed via Groq Whisper API.
 
@@ -140,6 +141,7 @@ Current test coverage:
 - `src/lib/templates.test.ts` — Template selection and defaults
 - `src/lib/exports.test.ts` — Share format, PDF/Markdown/Text exports
 - `src/lib/ai-providers.test.ts` — Helper functions (extractSentences, extractTopics)
+- `src/lib/dates.test.ts` — Local-date parsing for Postgres `date` columns, calendar-day math
 
 ## PR Instructions
 

@@ -1,63 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { transcribeAudio, transcribeMediaFile } from "@/lib/transcription";
-import { processMeetingWithAI } from "@/lib/ai-providers";
 import crypto from "crypto";
 import { embed } from "ai";
 import { openai } from "@ai-sdk/openai";
-import { getTemplate } from "@/lib/templates";
-import { Readable } from "stream";
+import { limitFor } from "@/lib/rate-limit";
 
-async function parseMultipartBody(request: Request): Promise<{ fields: Record<string, string>; file: File | null }> {
-  const contentType = request.headers.get("content-type") || "";
-  const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
-  if (!boundaryMatch) throw new Error("No multipart boundary found");
-
-  const boundary = boundaryMatch[1];
-  const nodeStream = Readable.fromWeb(request.body as import("stream/web").ReadableStream);
-  const chunks: Buffer[] = [];
-  for await (const chunk of nodeStream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const body = Buffer.concat(chunks);
-
-  const boundaryBuf = Buffer.from(`--${boundary}`);
-  const parts: Buffer[] = [];
-  let start = body.indexOf(boundaryBuf) + boundaryBuf.length + 2;
-
-  while (start < body.length) {
-    const nextBoundary = body.indexOf(boundaryBuf, start);
-    if (nextBoundary === -1) break;
-    parts.push(body.subarray(start, nextBoundary - 2));
-    start = nextBoundary + boundaryBuf.length + 2;
-  }
-
-  const fields: Record<string, string> = {};
-  let file: File | null = null;
-
-  for (const part of parts) {
-    const headerEnd = part.indexOf("\r\n\r\n");
-    if (headerEnd === -1) continue;
-    const headerStr = part.subarray(0, headerEnd).toString("utf-8");
-    const data = part.subarray(headerEnd + 4);
-
-    const nameMatch = headerStr.match(/name="([^"]+)"/);
-    const filenameMatch = headerStr.match(/filename="([^"]+)"/);
-    const mimeMatch = headerStr.match(/Content-Type:\s*(.+)/i);
-    if (!nameMatch) continue;
-
-    const name = nameMatch[1];
-    if (filenameMatch) {
-      file = new File([new Uint8Array(data)], filenameMatch[1], {
-        type: mimeMatch ? mimeMatch[1].trim() : "application/octet-stream",
-      });
-    } else {
-      fields[name] = data.toString("utf-8").trim();
-    }
-  }
-
-  return { fields, file };
-}
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const UPLOAD_SIZE_ERROR = "File too large. Maximum upload size is 500MB.";
 
 export async function GET(request: Request) {
   try {
@@ -90,6 +40,13 @@ export async function GET(request: Request) {
 
     let matchedOrder: string[] = [];
 
+    const applyTextSearch = () => {
+      queryBuilder = queryBuilder.textSearch("search_vector", query as string, {
+        type: "websearch",
+        config: "english",
+      });
+    };
+
     if (query) {
       try {
         const { embedding } = await embed({
@@ -108,10 +65,7 @@ export async function GET(request: Request) {
         if (matchError) {
           console.error("Match error:", matchError);
           // Fallback to text search if RPC fails (e.g. user hasn't run SQL yet)
-          queryBuilder = queryBuilder.textSearch("search_vector", query, {
-            type: "websearch",
-            config: "english",
-          });
+          applyTextSearch();
         } else if (matchedMeetings && matchedMeetings.length > 0) {
           matchedOrder = matchedMeetings.map((m: { id: string }) => m.id);
           queryBuilder = queryBuilder.in("id", matchedOrder);
@@ -121,15 +75,13 @@ export async function GET(request: Request) {
         }
       } catch (embedError) {
         console.error("Embedding error:", embedError);
-        queryBuilder = queryBuilder.textSearch("search_vector", query, {
-          type: "websearch",
-          config: "english",
-        });
+        applyTextSearch();
       }
     } else {
       queryBuilder = queryBuilder.order("created_at", { ascending: false });
     }
 
+    // Overdue count spans every meeting the user owns, independent of the search filter
     const { data: userMeetingIds } = await supabase
       .from("meetings")
       .select("id")
@@ -229,7 +181,25 @@ export async function POST(request: Request) {
       data: { user },
     } = await supabase.auth.getUser();
 
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Uploads trigger transcription + analysis, the most expensive path in the app
+    const budget = limitFor(user.id, "create");
+    if (!budget.ok) {
+      return NextResponse.json(
+        { error: "Meeting creation limit reached. Try again later." },
+        { status: 429, headers: { "Retry-After": String(budget.retryAfter) } }
+      );
+    }
+
     const contentType = request.headers.get("content-type") || "";
+    const declaredLength = Number(request.headers.get("content-length") || 0);
+    if (declaredLength > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: UPLOAD_SIZE_ERROR }, { status: 413 });
+    }
+
     let transcript: string | undefined;
     let title: string | undefined;
     let audioUrl: string | undefined;
@@ -238,14 +208,19 @@ export async function POST(request: Request) {
     let uploadedFile: File | null = null;
 
     if (contentType.includes("multipart/form-data")) {
-      const { fields, file } = await parseMultipartBody(request);
+      const formData = await request.formData();
+      const fileEntry = formData.get("file");
 
-      transcript = fields.transcript || undefined;
-      title = fields.title || undefined;
-      audioUrl = fields.audioUrl || undefined;
-      templateName = fields.templateName || undefined;
-      language = fields.language || undefined;
-      uploadedFile = file;
+      transcript = (formData.get("transcript") as string | null)?.trim() || undefined;
+      title = (formData.get("title") as string | null)?.trim() || undefined;
+      audioUrl = (formData.get("audioUrl") as string | null)?.trim() || undefined;
+      templateName = (formData.get("templateName") as string | null)?.trim() || undefined;
+      language = (formData.get("language") as string | null)?.trim() || undefined;
+      uploadedFile = fileEntry instanceof File && fileEntry.size > 0 ? fileEntry : null;
+
+      if (uploadedFile && uploadedFile.size > MAX_UPLOAD_BYTES) {
+        return NextResponse.json({ error: UPLOAD_SIZE_ERROR }, { status: 413 });
+      }
     } else {
       const body = await request.json();
       ({ transcript, title, audioUrl, templateName, language } = body as {
@@ -264,9 +239,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch template context from built-in defaults only
-    const templateContext = getTemplate(templateName)?.aiPromptContext;
-
+    // Analysis (and template lookup) happens in POST /api/meetings/[id]/analyze
     // If a file is uploaded but no transcript exists, transcribe the file directly.
     // If transcription fails (for example, provider limitations), fall back to a minimal transcript
     // so the meeting can still be analyzed into notes instead of failing outright.
@@ -329,19 +302,6 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!user) {
-      const result = await processMeetingWithAI(effectiveTranscript, templateContext, new Date().toISOString());
-      return NextResponse.json(
-        {
-          demo: true,
-          title: result.title,
-          result,
-          raw_transcript: effectiveTranscript,
-        },
-        { status: 200 }
-      );
-    }
-
     // Create meeting in DB
     const shareToken = crypto.randomUUID();
     const inferredTitle = uploadedFile
@@ -383,19 +343,16 @@ export async function POST(request: Request) {
 
     // Compute basic quality metrics (pre-analysis)
     const wordCount = effectiveTranscript.split(/\s+/).length;
-    
-    try {
-      await supabase.from("meeting_quality_metrics").insert({
-        meeting_id: meeting.id,
-        sentiment_pct: 0,
-        engagement_pct: 0,
-        monologue_pct: 0,
-        action_item_completion_pct: 0,
-        participant_count: Math.min(10, Math.max(1, wordCount / 200)),
-      });
-    } catch (qualityErr) {
-      console.warn("Quality metrics computation failed:", qualityErr);
-    }
+
+    const { error: qualityErr } = await supabase.from("meeting_quality_metrics").insert({
+      meeting_id: meeting.id,
+      sentiment_pct: 0,
+      engagement_pct: 0,
+      monologue_pct: 0,
+      action_item_completion_pct: 0,
+      participant_count: Math.round(Math.min(10, Math.max(1, wordCount / 200))),
+    });
+    if (qualityErr) console.warn("Quality metrics insert failed:", qualityErr.message);
 
     // Fetch complete meeting (no joins — tables may not exist)
     const { data: fullMeeting, error: fetchError } = await supabase

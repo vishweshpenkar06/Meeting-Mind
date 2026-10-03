@@ -3,21 +3,30 @@ import { createClient } from "@/lib/supabase/server";
 import { getTemplate, getSampleAgenda } from "@/lib/templates";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { limitFor } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const templateName = (body as { templateName?: string }).templateName;
+
+  const budget = limitFor(user.id, "agenda");
+  if (!budget.ok) {
+    return NextResponse.json(
+      { error: "Agenda generation limit reached. Try again later.", items: getSampleAgenda(templateName || "general") },
+      { status: 429, headers: { "Retry-After": String(budget.retryAfter) } }
+    );
+  }
+  const sampleAgenda = getSampleAgenda(templateName || "general");
+
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { templateName } = body;
-
     const template = getTemplate(templateName);
     const agendaPrompt = template?.agendaPrompt;
-    const sampleAgenda = getSampleAgenda(templateName || "general");
 
     const { data: recentMeetings } = await supabase
       .from("meetings")
@@ -73,7 +82,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ items: items.length > 0 ? items : sampleAgenda });
   } catch (err) {
     console.error("Agenda generation error:", err);
-    const body = await request.clone().json().catch(() => ({})) as { templateName?: string };
-    return NextResponse.json({ items: getSampleAgenda(body?.templateName || "general") });
+    return NextResponse.json({ items: sampleAgenda });
   }
 }

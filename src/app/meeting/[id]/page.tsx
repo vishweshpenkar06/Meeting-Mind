@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -20,6 +20,9 @@ import {
 import { exportToPDF, downloadAsMarkdown, copyShareFormat } from "@/lib/exports";
 import AudioPlayer from "@/components/AudioPlayer";
 import InteractiveTranscript from "@/components/InteractiveTranscript";
+import { formatShortDate, daysUntil } from "@/lib/dates";
+import TagPicker from "@/components/TagPicker";
+import { Tabs } from "@/components/ui";
 
 interface ActionItem {
   id: string;
@@ -69,7 +72,7 @@ export default function MeetingPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showShareLink, setShowShareLink] = useState(false);
-  const [toggling, setToggling] = useState(false);
+  const [pendingItems, setPendingItems] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
   const [editTitle, setEditTitle] = useState(false);
   const [titleValue, setTitleValue] = useState("");
@@ -85,10 +88,39 @@ export default function MeetingPage() {
   const [editingItemValue, setEditingItemValue] = useState("");
   const [editingDecisionId, setEditingDecisionId] = useState<string | null>(null);
   const [editingDecisionValue, setEditingDecisionValue] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const toastTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const timers = toastTimersRef.current;
+    return () => {
+      mountedRef.current = false;
+      fetchAbortRef.current?.abort();
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
+
+  const showToastFor = useCallback((message: string) => {
+    setShowToast(message);
+    const timer = setTimeout(() => {
+      toastTimersRef.current.delete(timer);
+      setShowToast(null);
+    }, 2500);
+    toastTimersRef.current.add(timer);
+  }, []);
 
   const fetchMeeting = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
     try {
-      const res = await fetch(`/api/meetings/${params.id}`);
+      const res = await fetch(`/api/meetings/${params.id}`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       if (res.ok) {
         const data = await res.json();
         setMeeting(data);
@@ -100,11 +132,23 @@ export default function MeetingPage() {
         setError(errData.error || "Meeting not found or you don't have access");
       }
     } catch (err) {
+      if (controller.signal.aborted) return;
       console.error("Failed to fetch meeting:", err);
       setError("Could not load meeting");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
+  }, [params.id]);
+
+  // A client-side navigation between /meeting/[id] URLs reuses this instance, so
+  // per-meeting flags must be cleared or the next meeting is skipped entirely
+  useEffect(() => {
+    setLoading(true);
+    setMeeting(null);
+    setRequestedAnalysis(false);
+    setDiarizationAttempted(false);
+    setAnalysisError(null);
+    setPendingItems(new Set());
   }, [params.id]);
 
   useEffect(() => {
@@ -167,24 +211,31 @@ export default function MeetingPage() {
       setDiarizationAttempted(true);
       fetch(`/api/meetings/${params.id}/diarize`, { method: "POST" })
         .then(async (res) => {
-          if (res.ok) {
-            const data = await res.json();
-            if (data.segments && data.segments.length > 0) {
-              setMeeting((prev) => prev ? { ...prev, transcript_segments: data.segments } : prev);
-            }
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `Diarization failed (${res.status})`);
+          }
+          const data = await res.json();
+          if (data.segments && data.segments.length > 0) {
+            setMeeting((prev) => prev ? { ...prev, transcript_segments: data.segments } : prev);
           }
         })
-        .catch((err) => console.error("Diarization failed:", err))
+        .catch((err) => {
+          console.error("Diarization failed:", err);
+          setDiarizationAttempted(false);
+          setError(err instanceof Error ? err.message : "Speaker identification failed");
+        })
         .finally(() => setIsDiarizing(false));
     }
   }, [activeTab, meeting, params.id, isDiarizing, diarizationAttempted]);
 
   const toggleItem = async (actionItemId: string) => {
-    if (!meeting || toggling) return;
+    if (!meeting || pendingItems.has(actionItemId)) return;
     const item = meeting.action_items?.find((i) => i.id === actionItemId);
     if (!item) return;
 
     const newCompleted = !item.is_completed;
+    setPendingItems((prev) => new Set(prev).add(actionItemId));
     setMeeting({
       ...meeting,
       action_items: meeting.action_items.map((i) =>
@@ -192,18 +243,31 @@ export default function MeetingPage() {
       ),
     });
 
-    setToggling(true);
     try {
-      await fetch(`/api/meetings/${meeting.id}/action-items`, {
+      const res = await fetch(`/api/meetings/${meeting.id}/action-items`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actionItemId, isCompleted: newCompleted }),
       });
-    } catch {
-      console.error("Failed to toggle");
-      fetchMeeting();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Could not update task (${res.status})`);
+      }
+    } catch (err) {
+      console.error("Failed to toggle:", err);
+      setMeeting((prev) => prev ? {
+        ...prev,
+        action_items: prev.action_items.map((i) =>
+          i.id === actionItemId ? { ...i, is_completed: !newCompleted } : i
+        ),
+      } : prev);
+      setError(err instanceof Error ? err.message : "Could not update task");
     } finally {
-      setToggling(false);
+      setPendingItems((prev) => {
+        const next = new Set(prev);
+        next.delete(actionItemId);
+        return next;
+      });
     }
   };
 
@@ -239,13 +303,18 @@ export default function MeetingPage() {
     setEditingItemField(null);
 
     try {
-      await fetch(`/api/meetings/${meeting.id}/action-items`, {
+      const res = await fetch(`/api/meetings/${meeting.id}/action-items`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
-    } catch {
-      console.error("Failed to save action item edit");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Could not save task (${res.status})`);
+      }
+    } catch (err) {
+      console.error("Failed to save action item edit:", err);
+      setError(err instanceof Error ? err.message : "Could not save task");
       fetchMeeting();
     }
   };
@@ -256,92 +325,151 @@ export default function MeetingPage() {
   };
 
   const saveEditDecision = async () => {
-    if (!meeting || !editingDecisionId || !editingDecisionValue.trim()) return;
+    // Clearing the text then clicking away must still leave edit mode
+    if (!meeting || !editingDecisionId) return;
+    const decisionId = editingDecisionId;
+    const nextText = editingDecisionValue.trim();
+    setEditingDecisionId(null);
 
+    if (!nextText) {
+      setError("Decision text cannot be empty");
+      fetchMeeting();
+      return;
+    }
+
+    const previous = meeting.key_decisions;
     setMeeting({
       ...meeting,
       key_decisions: meeting.key_decisions.map((d) =>
-        d.id === editingDecisionId ? { ...d, decision_text: editingDecisionValue.trim() } : d
+        d.id === decisionId ? { ...d, decision_text: nextText } : d
       ),
     });
 
-    setEditingDecisionId(null);
-
     try {
-      await fetch(`/api/meetings/${meeting.id}/decisions`, {
+      const res = await fetch(`/api/meetings/${meeting.id}/decisions`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decisionId: editingDecisionId, decisionText: editingDecisionValue.trim() }),
+        body: JSON.stringify({ decisionId, decisionText: nextText }),
       });
-    } catch {
-      console.error("Failed to save decision edit");
-      fetchMeeting();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Could not save decision (${res.status})`);
+      }
+    } catch (err) {
+      console.error("Failed to save decision edit:", err);
+      setMeeting((prev) => prev ? { ...prev, key_decisions: previous } : prev);
+      setError(err instanceof Error ? err.message : "Could not save decision");
     }
   };
 
   const handleShare = async () => {
     if (!meeting) return;
 
-    if (!meeting.share_token) {
-      await fetch(`/api/meetings/${meeting.id}`, {
+    let shareToken = meeting.share_token;
+    if (!shareToken) {
+      const res = await fetch(`/api/meetings/${meeting.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_public: true }),
       });
-      await fetchMeeting();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.error || "Could not create a share link");
+        return;
+      }
+      // The PATCH response carries the freshly minted token
+      const updated = await res.json();
+      shareToken = updated.share_token;
+      setMeeting(updated);
     }
 
-    const shareUrl = `${window.location.origin}/share/${meeting.share_token || "..."}`;
-    navigator.clipboard?.writeText(shareUrl).then(() => {
+    if (!shareToken) {
+      setError("Could not create a share link");
+      return;
+    }
+
+    const shareUrl = `${window.location.origin}/share/${shareToken}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setShowShareLink(true);
       setTimeout(() => {
         setCopied(false);
         setShowShareLink(false);
       }, 2000);
-    });
+    } catch {
+      setError("Could not copy to clipboard. Copy the link manually.");
+    }
   };
 
   const togglePublic = async () => {
     if (!meeting) return;
-    await fetch(`/api/meetings/${meeting.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_public: !meeting.is_public }),
-    });
-    await fetchMeeting();
-    setShowToast(meeting.is_public ? "Meeting is now private" : "Meeting is now public");
+    try {
+      const res = await fetch(`/api/meetings/${meeting.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_public: !meeting.is_public }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.error || "Could not change sharing");
+        return;
+      }
+      const updated = await res.json();
+      setMeeting(updated);
+      setTitleValue(updated.title || "");
+      showToastFor(updated.is_public ? "Meeting is now public" : "Meeting is now private");
+    } catch (err) {
+      console.error("Failed to toggle visibility:", err);
+      setError("Could not change sharing. Check your connection and try again.");
+    }
   };
 
   const saveTitle = async () => {
     if (!meeting || !titleValue.trim()) return;
-    const prevTitle = meeting.title;
-    setMeeting({ ...meeting, title: titleValue.trim() });
+    const nextTitle = titleValue.trim();
+    setMeeting((prev) => prev ? { ...prev, title: nextTitle } : prev);
     setEditTitle(false);
     try {
-      await fetch(`/api/meetings/${meeting.id}`, {
+      const res = await fetch(`/api/meetings/${meeting.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: titleValue.trim() }),
+        body: JSON.stringify({ title: nextTitle }),
       });
-    } catch {
-      setMeeting({ ...meeting, title: prevTitle });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Could not rename (${res.status})`);
+      }
+    } catch (err) {
+      console.error("Failed to save title:", err);
+      // Roll back only the title; other fields may have changed while awaiting
+      setMeeting((prev) => prev ? { ...prev, title: meeting.title } : prev);
+      setError(err instanceof Error ? err.message : "Could not rename meeting");
     }
   };
 
   const handleDelete = async () => {
-    if (!meeting) return;
+    if (!meeting || deleting) return;
+    setDeleting(true);
     try {
-      await fetch(`/api/meetings/${meeting.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/meetings/${meeting.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.error || "Could not delete the meeting");
+        return;
+      }
       router.push("/dashboard");
-    } catch {
-      console.error("Failed to delete");
+    } catch (err) {
+      console.error("Failed to delete:", err);
+      setError("Could not delete the meeting. Check your connection and try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen max-w-[720px] mx-auto px-6 pt-8 flex items-center justify-center bg-bg-base">
+      <div className="page-shell page-container pt-8 flex items-center justify-center">
         <div className="flex items-center gap-3">
           <Loader2 className="w-5 h-5 text-accent-primary animate-spin" />
           <span className="text-text-secondary text-sm">Loading meeting...</span>
@@ -352,7 +480,7 @@ export default function MeetingPage() {
 
   if (error || !meeting) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-base px-6">
+      <div className="page-shell flex items-center justify-center px-6">
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-text-primary mb-2">
             {error || "Meeting Not Found"}
@@ -382,7 +510,7 @@ export default function MeetingPage() {
   const progressPct = actionItems.length > 0 ? (completedCount / actionItems.length) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-bg-base max-w-[720px] mx-auto px-6 pt-6 pb-16">
+    <div className="page-shell page-container pt-6 pb-16">
       {/* Top Bar */}
       <div className="flex items-center justify-between mb-6">
         <button
@@ -423,10 +551,12 @@ export default function MeetingPage() {
                   )}
                   <hr className="my-1 border-border-subtle" />
                   <button
+                    disabled={deleting}
                     onClick={() => { setShowMenu(false); handleDelete(); }}
-                    className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-error hover:bg-error-muted/50 transition-colors"
+                    className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-error hover:bg-error-muted/50 transition-colors disabled:opacity-50"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete Meeting
+                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    {deleting ? "Deleting..." : "Delete Meeting"}
                   </button>
                 </div>
               </>
@@ -475,13 +605,13 @@ export default function MeetingPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1
-              className="font-[family:var(--font-space-grotesk)] font-bold text-xl text-text-primary"
+              className="font-display font-bold text-xl text-text-primary"
               style={{ lineHeight: "1.15" }}
             >
               {displayTitle || "Untitled Meeting"}
               {isProcessing && <Loader2 className="w-4 h-4 inline-block ml-2 text-accent-primary animate-spin" />}
             </h1>
-            <p className="text-text-muted text-xs mt-1 font-[family:var(--font-jetbrains)]">
+            <p suppressHydrationWarning className="text-text-muted text-xs mt-1 font-mono">
               {new Date(meeting.created_at).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
@@ -489,6 +619,7 @@ export default function MeetingPage() {
               })}
               {actionItems.length > 0 && ` \u00B7 ${actionItems.length} task${actionItems.length === 1 ? "" : "s"}`}
             </p>
+            <TagPicker meetingId={meeting.id} className="mt-3" />
           </div>
         </div>
 
@@ -516,23 +647,15 @@ export default function MeetingPage() {
       <div className="h-px bg-border-subtle my-6" />
 
       {/* Tab Bar */}
-      <div className="flex gap-0 mb-6 border-b border-border-subtle">
-        {(["notes", "actions", "transcript"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === tab
-                ? "border-accent-primary text-text-primary"
-                : "border-transparent text-text-muted hover:text-text-secondary"
-            }`}
-          >
-            {tab === "notes" && "Notes"}
-            {tab === "actions" && `Actions${actionItems.length > 0 ? ` (${actionItems.length})` : ""}`}
-            {tab === "transcript" && "Transcript"}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        items={[
+          { id: "notes", label: "Notes" },
+          { id: "actions", label: "Actions", count: actionItems.length },
+          { id: "transcript", label: "Transcript" },
+        ]}
+        value={activeTab}
+        onChange={(id) => setActiveTab(id as "notes" | "actions" | "transcript")}
+      />
 
       {/* === NOTES TAB === */}
       {activeTab === "notes" && (
@@ -656,11 +779,15 @@ export default function MeetingPage() {
                   key={item.id}
                   className={`flex items-center gap-3 py-3 px-3 rounded-lg transition-all duration-200 group border-b border-border-subtle last:border-b-0 ${isEditing ? "bg-bg-elevated/60" : "hover:bg-bg-elevated/40 cursor-pointer"}`}
                 >
-                  <div
-                    className="w-[18px] h-[18px] rounded border-[2px] flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer"
+                  <button
+                    type="button"
+                    aria-label={item.is_completed ? `Mark "${item.task_description}" as not done` : `Mark "${item.task_description}" as done`}
+                    aria-pressed={item.is_completed}
+                    disabled={pendingItems.has(item.id)}
+                    className="w-[18px] h-[18px] rounded border-[2px] flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                     style={{
-                      borderColor: item.is_completed ? "#34D399" : "#2A3F57",
-                      backgroundColor: item.is_completed ? "#34D399" : "transparent",
+                      borderColor: item.is_completed ? "var(--color-success)" : "var(--color-border-default)",
+                      backgroundColor: item.is_completed ? "var(--color-success)" : "transparent",
                     }}
                     onClick={() => toggleItem(item.id)}
                   >
@@ -669,7 +796,7 @@ export default function MeetingPage() {
                         <polyline points="2,6 5,9 10,3" />
                       </svg>
                     )}
-                  </div>
+                  </button>
                   {isEditing && editingItemField === "owner" ? (
                     <input
                       autoFocus
@@ -683,7 +810,7 @@ export default function MeetingPage() {
                   ) : (
                     <span
                       className="text-xs font-semibold px-2.5 py-0.5 rounded-sm flex-shrink-0 cursor-pointer hover:opacity-80"
-                      style={{ backgroundColor: "rgba(45, 31, 94, 0.6)", color: "#8B5CF6" }}
+                      style={{ backgroundColor: "var(--color-accent-purple-muted)", color: "var(--color-accent-purple)" }}
                       onClick={(e) => { e.stopPropagation(); startEditItem(item.id, "owner", item.owner_name); }}
                     >
                       {item.owner_name}
@@ -692,8 +819,8 @@ export default function MeetingPage() {
                   {priority && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wider"
                       style={{
-                        backgroundColor: priority === "critical" ? "rgba(239,68,68,0.15)" : priority === "high" ? "rgba(245,158,11,0.15)" : "rgba(79,142,247,0.1)",
-                        color: priority === "critical" ? "#EF4444" : priority === "high" ? "#F59E0B" : "#4F8EF7",
+                        backgroundColor: priority === "critical" ? "var(--color-error-muted)" : priority === "high" ? "var(--color-warning-muted)" : "var(--color-accent-muted)",
+                        color: priority === "critical" ? "var(--color-error)" : priority === "high" ? "var(--color-warning)" : "var(--color-accent-primary)",
                       }}
                     >{priority}</span>
                   )}
@@ -710,7 +837,7 @@ export default function MeetingPage() {
                   ) : (
                     <span
                       className="flex-1 text-[14px] transition-all duration-200 cursor-pointer"
-                      style={{ color: item.is_completed ? "#4A5E78" : "#EDF2FF", textDecoration: item.is_completed ? "line-through" : "none" }}
+                      style={{ color: item.is_completed ? "var(--color-text-muted)" : "var(--color-text-primary)", textDecoration: item.is_completed ? "line-through" : "none" }}
                       onClick={(e) => { e.stopPropagation(); if (!item.is_completed) startEditItem(item.id, "task", item.task_description); }}
                     >{item.task_description}</span>
                   )}
@@ -722,15 +849,15 @@ export default function MeetingPage() {
                       onChange={(e) => setEditingItemValue(e.target.value)}
                       onBlur={saveEditItem}
                       onKeyDown={(e) => { if (e.key === "Enter") saveEditItem(); if (e.key === "Escape") setEditingItemId(null); }}
-                      className="text-xs font-[family:var(--font-jetbrains)] bg-bg-surface border border-accent-primary text-text-primary rounded px-2 py-0.5 focus:outline-none w-32"
+                      className="text-xs font-mono bg-bg-surface border border-accent-primary text-text-primary rounded px-2 py-0.5 focus:outline-none w-32"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
                     <span
-                      className="text-xs font-[family:var(--font-jetbrains)] flex-shrink-0 cursor-pointer hover:text-accent-primary"
-                      style={{ color: item.is_completed ? "#34D399" : "#4A5E78" }}
+                      className="text-xs font-mono flex-shrink-0 cursor-pointer hover:text-accent-primary"
+                      style={{ color: item.is_completed ? "var(--color-success)" : "var(--color-text-muted)" }}
                       onClick={(e) => { e.stopPropagation(); if (!item.is_completed) startEditItem(item.id, "dueDate", item.due_date || ""); }}
-                    >{item.due_date ? new Date(item.due_date).toLocaleDateString() : "No deadline"}</span>
+                    >{item.due_date ? formatShortDate(item.due_date) : "No deadline"}</span>
                   )}
                 </div>
                 );
@@ -757,7 +884,7 @@ export default function MeetingPage() {
                 segments={meeting.transcript_segments?.map((s) => ({
                   text: s.text,
                   speaker: s.speaker || undefined,
-                  start_time: s.start_time || undefined,
+                  start_time: s.start_time ?? undefined,
                   end_time: s.end_time || undefined,
                 }))}
               />
@@ -781,7 +908,7 @@ export default function MeetingPage() {
                     .map((sentence, i) => (
                       <div key={i} className="flex items-start gap-3">
                         <span className="text-accent-primary text-xs mt-1.5 flex-shrink-0">•</span>
-                        <span className="text-text-secondary text-[13px] leading-relaxed font-[family:var(--font-jetbrains)]">
+                        <span className="text-text-secondary text-[13px] leading-relaxed font-mono">
                           {sentence.trim()}
                         </span>
                       </div>
@@ -800,14 +927,17 @@ export default function MeetingPage() {
       {/* Bottom Actions */}
       <div className="flex items-center justify-center flex-wrap gap-2 pb-8">
         <button
-          onClick={() => {
+          onClick={async () => {
             if (!meeting) return;
             const text = copyShareFormat(meeting);
-            navigator.clipboard?.writeText(text).then(() => {
+            try {
+              await navigator.clipboard.writeText(text);
               setCopied(true);
-              setShowToast("Copied to clipboard");
-              setTimeout(() => { setCopied(false); setShowToast(null); }, 2500);
-            });
+              showToastFor("Copied to clipboard");
+              setTimeout(() => setCopied(false), 2500);
+            } catch {
+              setError("Could not copy to clipboard.");
+            }
           }}
           className="flex items-center gap-2 bg-accent-primary hover:bg-accent-primary-hover text-text-inverse px-4 py-2 rounded-xl text-sm font-medium transition-colors duration-150"
         >
@@ -883,23 +1013,19 @@ export default function MeetingPage() {
 }
 
 function SummaryNotes({ summary, highlight }: { summary: string; highlight?: string }) {
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
-
   const sections = parseSummaryIntoSections(summary);
-  const allExpanded = Object.values(expanded).every(Boolean);
+  const defaultOpen = sections.length <= 4;
+  // null means "not yet touched", so the first click always flips the section
+  const [expanded, setExpanded] = useState<Record<number, boolean | null>>({});
+  const isOpenAt = (i: number) => expanded[i] ?? defaultOpen;
+  const allExpanded = sections.every((_, i) => isOpenAt(i));
 
   const toggleAll = () => {
-    if (allExpanded) {
-      setExpanded({});
-    } else {
-      const next: Record<number, boolean> = {};
-      sections.forEach((_, i) => { next[i] = true; });
-      setExpanded(next);
-    }
+    setExpanded(Object.fromEntries(sections.map((_, i) => [i, !allExpanded])));
   };
 
   const toggle = (i: number) => {
-    setExpanded((prev) => ({ ...prev, [i]: !prev[i] }));
+    setExpanded((prev) => ({ ...prev, [i]: !(prev[i] ?? defaultOpen) }));
   };
 
   if (sections.length <= 1) {
@@ -926,7 +1052,7 @@ function SummaryNotes({ summary, highlight }: { summary: string; highlight?: str
         {allExpanded ? "Collapse all" : "Expand all"}
       </button>
       {sections.map((section, i) => {
-        const isOpen = expanded[i] ?? (sections.length <= 4);
+        const isOpen = isOpenAt(i);
         return (
           <div
             key={i}
@@ -972,7 +1098,14 @@ function SummaryNotes({ summary, highlight }: { summary: string; highlight?: str
 }
 
 function parseSummaryIntoSections(summary: string): Array<{ heading: string; points: string[]; color: string }> {
-  const colors = ["#4F8EF7", "#8B5CF6", "#10B981", "#F59E0B", "#EF4444", "#06B6D4"];
+  const colors = [
+    "var(--color-cat-1)",
+    "var(--color-cat-2)",
+    "var(--color-cat-3)",
+    "var(--color-cat-4)",
+    "var(--color-cat-5)",
+    "var(--color-cat-6)",
+  ];
 
   const lines = summary.split("\n").filter((l) => l.trim());
   const sections: Array<{ heading: string; points: string[]; color: string }> = [];
@@ -987,7 +1120,7 @@ function parseSummaryIntoSections(summary: string): Array<{ heading: string; poi
       const heading = trimmed.replace(/^#{1,3}\s*/, "").replace(/^\*\*/, "").replace(/\*\*:?\s*$/, "").replace(/:\s*$/, "").trim();
       current = { heading, points: [], color: colors[sections.length % colors.length] };
     } else {
-      const point = trimmed.replace(/^[-•*]\s*/, "").replace(/^\d+\.\s*/, "").trim();
+      const point = trimmed.replace(/^[-•]\s+/, "").replace(/^\*\s+/, "").replace(/^\d+\.\s*/, "").trim();
       if (!current) {
         current = { heading: "Overview", points: [], color: colors[0] };
       }
@@ -1017,12 +1150,10 @@ function inferPriority(task: string, dueDate: string | null): "critical" | "high
   const lower = task.toLowerCase();
   if (/\b(urgent|critical|asap|immediately|blocker|p0|emergency)\b/i.test(lower)) return "critical";
   if (/\b(high priority|important|this week|by friday|deadline)\b/i.test(lower)) return "high";
-  if (dueDate) {
-    const due = new Date(dueDate);
-    const now = new Date();
-    const daysUntil = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-    if (daysUntil <= 2) return "critical";
-    if (daysUntil <= 7) return "high";
+  const remaining = daysUntil(dueDate);
+  if (remaining !== null) {
+    if (remaining <= 2) return "critical";
+    if (remaining <= 7) return "high";
   }
   return null;
 }

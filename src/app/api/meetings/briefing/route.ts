@@ -2,17 +2,27 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getTemplate, getSampleBriefing } from "@/lib/templates";
 import { generatePreMeetingBriefing } from "@/lib/ai-providers";
+import { limitFor } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-    const body = await request.json();
-    const { templateName } = body;
+  const body = await request.json().catch(() => ({}));
+  const templateName = (body as { templateName?: string }).templateName;
+
+  const budget = limitFor(user.id, "briefing");
+  if (!budget.ok) {
+    return NextResponse.json(
+      { error: "Briefing generation limit reached. Try again later.", ...getSampleBriefing(templateName || "general") },
+      { status: 429, headers: { "Retry-After": String(budget.retryAfter) } }
+    );
+  }
+
+  try {
     const template = getTemplate(templateName);
 
     const { data: recentMeetings } = await supabase
@@ -34,7 +44,6 @@ export async function POST(request: Request) {
     return NextResponse.json(briefing);
   } catch (err) {
     console.error("Briefing generation error:", err);
-    const body = await request.clone().json().catch(() => ({})) as { templateName?: string };
-    return NextResponse.json(getSampleBriefing(body?.templateName || "general"));
+    return NextResponse.json(getSampleBriefing(templateName || "general"));
   }
 }

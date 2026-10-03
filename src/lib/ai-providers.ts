@@ -1,5 +1,6 @@
 import { OpenAI } from "openai";
 import type { AIMeetingResult } from "./transcription";
+import { formatLocalDate, daysUntil, toDateOnly } from "./dates";
 
 export type AIProvider = "nvidia" | "openai" | "groq" | "openrouter" | "ollama";
 
@@ -18,6 +19,21 @@ RULES:
 - Never invent information not in the transcript.
 - Keep each bullet under 25 words.
 - Write in present tense.`;
+
+const DEFAULT_SUMMARY_FORMAT = `SUMMARY FORMAT — use this exact structure with section headers:
+## What Was Discussed
+- bullet point
+- bullet point
+
+## Key Outcomes
+- bullet point
+- bullet point
+
+## Next Steps
+- bullet point
+- bullet point
+
+Each section should have 2-5 bullet points. Max 15 bullets total. Each bullet max 25 words. No paragraphs.`;
 
 const USER_PROMPT = `Analyze this transcript. The meeting took place on {{MEETING_DATE}}. Return ONLY valid JSON:
 
@@ -52,18 +68,10 @@ DUE DATE RULES:
 - If no deadline is mentioned, set dueDate to null.
 - NEVER invent or guess a date. When in doubt, use null.
 
-SUMMARY FORMAT — use this exact structure with section headers:
+SUMMARY FORMAT: follow the section headers mandated above these rules. If no specific headers were given, use:
 ## What Was Discussed
-- bullet point
-- bullet point
-
 ## Key Outcomes
-- bullet point
-- bullet point
-
 ## Next Steps
-- bullet point
-- bullet point
 
 Each section should have 2-5 bullet points. Max 15 bullets total. Each bullet max 25 words. No paragraphs.
 
@@ -245,9 +253,10 @@ export async function processMeetingWithAI(
   }
 
   const anchorDate = meetingDate || new Date().toISOString().split("T")[0];
-  const anchorDateFormatted = new Date(anchorDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const anchorDateFormatted = formatLocalDate(anchorDate);
 
-  const fullSystemPrompt = templateContext ? `${templateContext}\n\n${SYSTEM_PROMPT}` : SYSTEM_PROMPT;
+  // A template owns the summary structure; only fall back to the default when there is none
+  const fullSystemPrompt = `${SYSTEM_PROMPT}\n\n${templateContext || DEFAULT_SUMMARY_FORMAT}`;
   const errors: string[] = [];
 
   for (const config of providers) {
@@ -294,11 +303,11 @@ export async function processMeetingWithAI(
           const obj = a as Record<string, string>;
           let dueDate = obj.dueDate || obj.due_date || null;
           if (dueDate) {
-            const parsedDate = new Date(dueDate);
-            const anchor = new Date(anchorDate);
-            const monthsDiff = (parsedDate.getTime() - anchor.getTime()) / (1000 * 60 * 60 * 24 * 30);
-            if (parsedDate < anchor || monthsDiff > 12) {
+            const offset = daysUntil(String(dueDate));
+            if (offset === null || offset < 0 || offset > 365) {
               dueDate = null;
+            } else {
+              dueDate = toDateOnly(String(dueDate));
             }
           }
           return {
@@ -330,28 +339,6 @@ export async function processMeetingWithAI(
   return generateFallbackMeetingResult(transcript);
 }
 
-export async function analyzeSentiment(transcript: string): Promise<number> {
-  const providers = makeProviders();
-  if (providers.length === 0) return 0;
-
-  const config = providers[0];
-  const openai = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
-
-  const completion = await openai.chat.completions.create({
-    model: config.model,
-    messages: [
-      { role: "system", content: "Analyze the sentiment of this meeting transcript. Return ONLY a single integer from -100 (very negative/hostile) to 100 (very positive/constructive). No explanation, just the number." },
-      { role: "user", content: transcript.slice(0, 8000) },
-    ],
-    temperature: 0.1,
-  });
-
-  const content = completion.choices[0]?.message?.content;
-  const score = content ? parseInt(content.trim(), 10) : 0;
-  if (isNaN(score)) return 0;
-  return Math.max(-100, Math.min(100, score));
-}
-
 export async function getAvailableProviders(): Promise<{ name: string; model: string }[]> {
   return makeProviders().map((p) => ({ name: p.name, model: p.model }));
 }
@@ -380,7 +367,7 @@ function heuristicDiarize(transcript: string): DiarizedSegment[] {
     const segs: DiarizedSegment[] = [];
     let buf = sentences[0];
     let idx = 0;
-    const names = ["Speaker A", "Speaker B", "Speaker C", "Speaker D", "Speaker E", "Speaker F"];
+    const names = ["Speaker A", "Speaker B"];
 
     for (let i = 1; i < sentences.length; i++) {
       if (i % 3 === 0 || /^(Yes|No|But|However|So|Well|I think|I agree|I disagree|Actually|Right|See|Also|Thank|Thanks)/i.test(sentences[i])) {
@@ -397,7 +384,7 @@ function heuristicDiarize(transcript: string): DiarizedSegment[] {
 
   const segs: DiarizedSegment[] = [];
   let idx = 0;
-  const names = ["Speaker A", "Speaker B", "Speaker C", "Speaker D", "Speaker E", "Speaker F"];
+  const names = ["Speaker A", "Speaker B"];
 
   for (const para of paragraphs) {
     segs.push({ speaker: names[idx % 2], text: para });
@@ -500,21 +487,21 @@ export async function generatePreMeetingBriefing(
 
   if (providers.length === 0) return fallback;
 
-  const config = providers[0];
-  try {
-    const openai = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+  const contextData = recentMeetings.map((m) => {
+    const pending = (m.action_items || []).filter((a) => !a.is_completed);
+    return `Meeting: ${m.title}\nSummary: ${m.summary}\nPending: ${pending.map((p) => p.task_description).join(", ") || "none"}`;
+  }).join("\n---\n");
 
-    const contextData = recentMeetings.map((m) => {
-      const pending = (m.action_items || []).filter((a) => !a.is_completed);
-      return `Meeting: ${m.title}\nSummary: ${m.summary}\nPending: ${pending.map((p) => p.task_description).join(", ") || "none"}`;
-    }).join("\n---\n");
+  for (const config of providers) {
+    try {
+      const openai = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
 
-    const completion = await openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
       model: config.model,
-      messages: [
-        {
-          role: "system",
-          content: `You are a meeting preparation assistant. Given context from recent meetings, generate a pre-meeting briefing.
+        messages: [
+          {
+            role: "system",
+            content: `You are a meeting preparation assistant. Given context from recent meetings, generate a pre-meeting briefing.
 
 Return ONLY valid JSON:
 {
@@ -523,28 +510,30 @@ Return ONLY valid JSON:
   "suggestedTopics": ["topic1", "topic2", "topic3"],
   "risks": ["risk1"]
 }`
-        },
-        {
-          role: "user",
-          content: `Meeting type: ${templateName}\n\nRecent meeting context:\n${contextData.slice(0, 6000)}\n\nGenerate a pre-meeting briefing.`
-        }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-    });
+          },
+          {
+            role: "user",
+            content: `Meeting type: ${templateName}\n\nRecent meeting context:\n${contextData.slice(0, 6000)}\n\nGenerate a pre-meeting briefing.`
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
 
-    const content = completion.choices[0]?.message?.content;
-    if (!content) return fallback;
+      const content = completion.choices[0]?.message?.content;
+      if (!content) continue;
 
-    const parsed = JSON.parse(content) as Partial<BriefingResult>;
-    return {
-      contextSummary: parsed.contextSummary || fallback.contextSummary,
-      pendingItems: Array.isArray(parsed.pendingItems) ? parsed.pendingItems : [],
-      suggestedTopics: Array.isArray(parsed.suggestedTopics) ? parsed.suggestedTopics : [],
-      risks: Array.isArray(parsed.risks) ? parsed.risks : [],
-    };
-  } catch (err) {
-    console.warn("Briefing generation failed:", err);
-    return fallback;
+      const parsed = JSON.parse(content) as Partial<BriefingResult>;
+      return {
+        contextSummary: parsed.contextSummary || fallback.contextSummary,
+        pendingItems: Array.isArray(parsed.pendingItems) ? parsed.pendingItems : [],
+        suggestedTopics: Array.isArray(parsed.suggestedTopics) ? parsed.suggestedTopics : [],
+        risks: Array.isArray(parsed.risks) ? parsed.risks : [],
+      };
+    } catch (err) {
+      console.warn(`Briefing generation failed with ${config.name}:`, err);
+    }
   }
+
+  return fallback;
 }

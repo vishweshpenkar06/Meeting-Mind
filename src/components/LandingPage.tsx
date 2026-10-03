@@ -14,19 +14,19 @@ const features = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen relative overflow-hidden bg-bg-base">
+    <div className="page-shell relative overflow-hidden">
       {/* Dot grid background */}
       <div className="absolute inset-0 dot-grid opacity-30 pointer-events-none" />
 
       {/* Navbar */}
-      <nav className="relative z-10 flex items-center justify-between px-6 md:px-12 h-16 max-w-[1200px] mx-auto">
+      <nav className="relative z-10 flex items-center justify-between px-6 md:px-12 h-16 page-container page-container-wide">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center text-text-inverse font-bold text-sm"
             style={{ background: "var(--gradient-hero)" }}
           >
             M
           </div>
-          <span className="font-[family:var(--font-space-grotesk)] font-bold text-lg text-text-primary">
+          <span className="font-display font-bold text-lg text-text-primary">
             MeetingMind
           </span>
         </div>
@@ -49,7 +49,7 @@ export default function LandingPage() {
 
         {/* Heading */}
         <h1
-          className="text-4xl md:text-5xl lg:text-[56px] leading-tight max-w-3xl font-[family:var(--font-space-grotesk)] font-bold tracking-tight mb-6"
+          className="text-4xl md:text-5xl lg:text-[56px] leading-tight max-w-3xl font-display font-bold tracking-tight mb-6"
           style={{ lineHeight: "1.05" }}
         >
           <span className="text-text-primary">Turn messy meetings</span>{" "}
@@ -82,8 +82,8 @@ export default function LandingPage() {
       </div>
 
       {/* Features */}
-      <section id="features" className="relative z-10 px-6 pb-20 max-w-[1000px] mx-auto">
-        <h2 className="text-center text-2xl md:text-3xl font-[family:var(--font-space-grotesk)] font-bold text-text-primary mb-12">
+      <section id="features" className="relative z-10 px-6 pb-20 page-container max-w-5xl">
+        <h2 className="text-center text-2xl md:text-3xl font-display font-bold text-text-primary mb-12">
           Everything you need from a meeting
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

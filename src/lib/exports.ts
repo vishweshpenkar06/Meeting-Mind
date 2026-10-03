@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { formatLocalDate, formatShortDate } from "./dates";
 
 export interface ActionItem {
   id: string;
@@ -45,11 +46,7 @@ function resolveDecisionText(d: KeyDecision): string {
 function buildExportData(meeting: Meeting): ExportData {
   return {
     title: meeting.title || "Untitled Meeting",
-    date: new Date(meeting.created_at).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }),
+    date: formatLocalDate(meeting.created_at),
     summary: meeting.summary,
     completedTasks: meeting.action_items.filter((a) => a.is_completed).length,
     totalTasks: meeting.action_items.length,
@@ -73,7 +70,7 @@ function downloadBlob(blob: Blob, filename: string) {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function exportToPDF(meeting: Meeting) {
@@ -87,6 +84,14 @@ export function exportToPDF(meeting: Meeting) {
     if (y > 270) {
       doc.addPage();
       y = 10;
+    }
+  };
+
+  const writeLines = (lines: string[], indent = 0) => {
+    for (const line of lines) {
+      checkPage();
+      doc.text(line, margin + indent, y);
+      y += 5;
     }
   };
 
@@ -113,9 +118,8 @@ export function exportToPDF(meeting: Meeting) {
     y += 6;
     doc.setFontSize(9);
     doc.setTextColor(0, 0, 0);
-    const lines = doc.splitTextToSize(data.summary, contentWidth);
-    doc.text(lines, margin, y);
-    y += lines.length * 5 + 4;
+    writeLines(doc.splitTextToSize(data.summary, contentWidth));
+    y += 4;
   }
 
   if (data.decisions.length > 0) {
@@ -127,10 +131,8 @@ export function exportToPDF(meeting: Meeting) {
     doc.setFontSize(9);
     doc.setTextColor(0, 0, 0);
     data.decisions.forEach((t) => {
-      checkPage();
-      const lines = doc.splitTextToSize(`- ${t}`, contentWidth);
-      doc.text(lines, margin + 2, y);
-      y += lines.length * 5 + 2;
+      writeLines(doc.splitTextToSize(`- ${t}`, contentWidth), 2);
+      y += 2;
     });
     y += 3;
   }
@@ -143,16 +145,14 @@ export function exportToPDF(meeting: Meeting) {
     y += 6;
     doc.setFontSize(9);
     data.actionItems.forEach((item) => {
-      checkPage();
       const done = item.done ? "[x]" : "[ ]";
       let line = `${done} [${item.owner}] ${item.task}`;
       if (item.dueDate) {
-        line += ` (due: ${new Date(item.dueDate).toLocaleDateString()})`;
+        line += ` (due: ${formatShortDate(item.dueDate)})`;
       }
-      const lines = doc.splitTextToSize(line, contentWidth);
       doc.setTextColor(item.done ? 100 : 0, item.done ? 100 : 0, item.done ? 100 : 0);
-      doc.text(lines, margin + 2, y);
-      y += lines.length * 5 + 2;
+      writeLines(doc.splitTextToSize(line, contentWidth), 2);
+      y += 2;
     });
   }
 
@@ -181,7 +181,7 @@ export function downloadAsText(meeting: Meeting) {
     text += `--- ACTION ITEMS ---\n\n`;
     data.actionItems.forEach((item) => {
       const done = item.done ? "[x]" : "[ ]";
-      const due = item.dueDate ? ` (due ${new Date(item.dueDate).toLocaleDateString()})` : "";
+      const due = item.dueDate ? ` (due ${formatShortDate(item.dueDate)})` : "";
       text += `${done} [${item.owner}] ${item.task}${due}\n`;
     });
     text += "\n";
@@ -213,7 +213,7 @@ export function downloadAsMarkdown(meeting: Meeting) {
     md += `## Action Items\n\n`;
     data.actionItems.forEach((item) => {
       const done = item.done ? "x" : " ";
-      const due = item.dueDate ? ` *(due ${new Date(item.dueDate).toLocaleDateString()})*` : "";
+      const due = item.dueDate ? ` *(due ${formatShortDate(item.dueDate)})*` : "";
       md += `- [${done}] **${item.owner}**: ${item.task}${due}\n`;
     });
     md += "\n";
@@ -245,7 +245,7 @@ export function copyShareFormat(meeting: Meeting): string {
     text += `*Action Items:*\n`;
     data.actionItems.forEach((item) => {
       const icon = item.done ? "\u2705" : "\u2B1C";
-      const due = item.dueDate ? ` (due ${new Date(item.dueDate).toLocaleDateString()})` : "";
+      const due = item.dueDate ? ` (due ${formatShortDate(item.dueDate)})` : "";
       text += `${icon} *${item.owner}*: ${item.task}${due}\n`;
     });
   }

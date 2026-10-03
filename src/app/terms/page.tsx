@@ -1,8 +1,8 @@
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-bg-base">
-      <div className="max-w-[640px] mx-auto px-6 pt-12 pb-24">
-        <h1 className="font-[family:var(--font-space-grotesk)] font-bold text-2xl text-text-primary mb-6">Terms of Service</h1>
+    <div className="page-shell">
+      <div className="page-container max-w-2xl pt-12 pb-24">
+        <h1 className="font-display font-bold text-2xl text-text-primary mb-6">Terms of Service</h1>
         <div className="space-y-4 text-text-secondary text-sm leading-relaxed">
           <p>Last updated: June 2026</p>
           <p>Welcome to MeetingMind. By using our service, you agree to these terms.</p>

@@ -28,7 +28,8 @@ For action item due dates, use these rules:
 
 For owner names:
 - Use the person's actual name from the transcript
-- If no owner is mentioned, use "Unassigned"`;
+- If no owner is mentioned, use "Unassigned"
+`;
 
 export async function POST(
   req: Request,
@@ -70,7 +71,7 @@ export async function POST(
       model: openai(process.env.OPENAI_MODEL || "gpt-4o"),
       schema: MeetingSchema,
       system: fullSystemPrompt,
-      prompt: `Analyze this meeting transcript and extract the requested fields.\n\nTranscript:\n---\n${meeting.raw_transcript}\n---`,
+      prompt: `Analyze this meeting transcript and extract the requested fields.\n\nTranscript:\n---\n${String(meeting.raw_transcript || "").slice(0, 15000)}\n---`,
       temperature: 0.3,
       onFinish: async ({ object }) => {
         if (!object) return;
@@ -84,6 +85,9 @@ export async function POST(
             summary: object.summary,
           })
           .eq("id", id);
+
+        await supabase.from("action_items").delete().eq("meeting_id", id);
+        await supabase.from("key_decisions").delete().eq("meeting_id", id);
 
         if (object.actionItems && object.actionItems.length > 0) {
           const itemsToInsert = object.actionItems.map((item: { owner: string; task: string; dueDate: string | null }) => ({
