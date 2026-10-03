@@ -118,10 +118,10 @@ export default function AudioPlayer({ src, segments, onTimeUpdate }: AudioPlayer
             />
           </div>
           <div className="flex justify-between mt-1.5">
-            <span className="text-[11px] text-text-muted font-mono">
+            <span className="text-caption text-text-muted font-mono">
               {formatTime(currentTime)}
             </span>
-            <span className="text-[11px] text-text-muted font-mono">
+            <span className="text-caption text-text-muted font-mono">
               {formatTime(duration)}
             </span>
           </div>

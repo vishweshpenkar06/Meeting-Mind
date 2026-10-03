@@ -64,14 +64,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </Link>
         <div className="flex items-center gap-3">
           {user && (
-            <span className="text-[11px] text-text-muted hidden md:block max-w-[180px] truncate font-mono">
+            <span className="text-caption text-text-muted hidden md:block max-w-45 truncate font-mono">
               {user.email}
             </span>
           )}
           <button
             onClick={handleSignOut}
             disabled={signingOut}
-            className="text-[11px] text-text-muted hover:text-text-primary transition-colors px-2.5 py-1 rounded-lg hover:bg-bg-elevated/50 disabled:opacity-50"
+            className="text-caption text-text-muted hover:text-text-primary transition-colors px-2.5 py-1 rounded-lg hover:bg-bg-elevated/50 disabled:opacity-50"
           >
             {signingOut ? "Signing out..." : "Sign out"}
           </button>

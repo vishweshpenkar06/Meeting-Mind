@@ -59,6 +59,22 @@ Radius is one value per role: `radius-control` 10px, `radius-card` 12px,
 depth with a wide+soft pass for ambient (`sm` → `xl`). Motion: 120ms micro,
 200ms UI, 320ms slow, all on `--ease-out-quart`.
 
+### Type scale
+
+One semantic scale, no arbitrary pixel sizes anywhere:
+
+| Token | Size | Use |
+|---|---|---|
+| `text-micro` | 10px | uppercase eyebrow labels |
+| `text-caption` | 11px | counts, timestamps, chips |
+| `text-meta` | 13px | secondary UI copy |
+| `text-sm` | 14px | default UI text (Tailwind default) |
+| `text-body` | 15px | long-form reading — summary prose |
+| `text-lg` | 18px | landing subheading |
+| `text-display-sm` | 28px | share page title |
+| `text-display` | 32px | page titles |
+| `text-hero` | 56px | landing hero only |
+
 ### Layout
 
 `page-shell` (min-height + background) and `page-container` (max-width +
@@ -67,8 +83,8 @@ centred + gutters) replace the per-page `min-h-screen bg-bg-base` and
 
 ## Rules
 
-1. **Tokens only.** No hex, no arbitrary values (`w-[347px]`, `text-[13px]`)
-   unless a pixel-perfect requirement is stated here.
+1. **Tokens only.** No hex, no arbitrary values (`w-[347px]`, `text-[13px]`,
+   `max-w-[720px]`). Verified: zero remain across `src/`.
 2. **All four interactive states** on anything clickable: `hover`, `active`,
    `focus-visible`, `disabled`. The global `:focus-visible` ring is never
    removed without a visible replacement.
@@ -89,9 +105,18 @@ centred + gutters) replace the per-page `min-h-screen bg-bg-base` and
 |---|---|---|
 | `cn()` | `src/lib/utils.ts` | — (utility) |
 | `categoricalColor` / `speakerColor` | `src/lib/palette.ts` | — (utility) |
+| `Button` | `src/components/ui/Button.tsx` | 4 + loading |
+| `Card` | `src/components/ui/Card.tsx` | interactive variant |
+| `Input` / `Textarea` | `src/components/ui/Input.tsx` | error, hint, disabled |
+| `Badge` | `src/components/ui/Badge.tsx` | 5 tones |
+| `EmptyState` / `Skeleton` / `SkeletonCard` | `src/components/ui/EmptyState.tsx` | — |
+| `Tabs` | `src/components/ui/Tabs.tsx` | aria-selected, focus ring |
+| `ToastProvider` / `useToast` | `src/components/ui/Toast.tsx` | mounted in root layout |
+| `TagPicker` | `src/components/TagPicker.tsx` | loading, error, rollback |
 
-Primitives (Button, Input, Card, Badge, EmptyState, Skeleton, Tabs, Toast) are
-Phase 2. Until they exist, components inline the tokens directly.
+Primitive exemptions: `Badge`, `Skeleton` and `Button` have no skeleton of
+their own — they are primitives that either exist or do not. `Card`, `Input`,
+`Tabs`, `TagPicker` and `Toast` all define loading or empty handling.
 
 ## Decisions
 
@@ -110,6 +135,17 @@ Phase 2. Until they exist, components inline the tokens directly.
   CSS variables.
 - **2026-10-03 — layout shell.** `page-shell` / `page-container` replace twelve
   copies of `min-h-screen bg-bg-base`.
+- **2026-10-03 — semantic type scale.** Replaced ~33 arbitrary `text-[Npx]`
+  values with `micro`/`caption`/`meta`/`body`/`display`/`hero`. `text-[14px]`
+  collapsed to `text-sm`, which is already 14px in Tailwind.
+- **2026-10-03 — landing redesign.** Rebuilt on `Card`: added a "How it works"
+  step section and a closing CTA, gave feature icons tinted containers, added
+  a radial hero glow, and replaced `<a href>` with `Link`.
+- **2026-10-03 — dashboard rows are links now.** The list row was a
+  `<div onClick>` with no keyboard access, and the delete button sat at
+  `opacity-0 group-hover:opacity-100`, so it was unreachable by keyboard.
+  Now a real `Link` with a sibling `Button` that reveals on focus as well as
+  hover.
 
 ## Non-Goals
 

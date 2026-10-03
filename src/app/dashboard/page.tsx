@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Search, X, Trash2, Calendar, CheckCircle2, FileText, CircleDot, ChevronDown, ChevronUp, AlertTriangle, ArrowUpDown, Filter } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { daysUntil, formatShortDate } from "@/lib/dates";
-import { Button, EmptyState, SkeletonCard } from "@/components/ui";
+import { Button, Card, EmptyState, SkeletonCard } from "@/components/ui";
 
 const TEMPLATE_META: Record<string, { label: string; color: string }> = {
   general: { label: "General", color: "var(--color-cat-1)" },
@@ -205,12 +206,12 @@ export default function DashboardPage() {
                     onClick={() => router.push(`/meeting/${item.meeting_id}`)}
                     className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-warning-muted/30 transition-colors text-left"
                   >
-                    <span className="text-[11px] text-text-muted font-mono flex-shrink-0">{item.owner_name}</span>
+                    <span className="text-caption text-text-muted font-mono flex-shrink-0">{item.owner_name}</span>
                     <span className="text-xs text-text-primary truncate flex-1">{item.task_description}</span>
                   </button>
                 ))}
                 {overdueItems.length > 8 && (
-                  <p className="text-[11px] text-warning/60 text-center">+{overdueItems.length - 8} more</p>
+                  <p className="text-caption text-warning/60 text-center">+{overdueItems.length - 8} more</p>
                 )}
               </div>
             )}
@@ -321,75 +322,93 @@ export default function DashboardPage() {
           <div className="flex flex-col">
             {sortedFiltered.map((m) => {
               const meta = TEMPLATE_META[m.templateName || "general"] || TEMPLATE_META.general;
-              return (
-                <div
-                  key={m.id}
-                  className="relative group flex items-center gap-3 px-4 py-3 border-b border-border-subtle last:border-b-0 hover:bg-bg-elevated/40 transition-colors duration-100 cursor-pointer rounded-xl"
-                  onClick={() => {
-                    const q = search ? "?q=" + encodeURIComponent(search) : "";
-                    router.push("/meeting/" + m.id + q);
-                  }}
-                >
-                  {showDeleteConfirm === m.id && (
-                    <div className="absolute inset-0 bg-bg-base/95 backdrop-blur-sm rounded-xl flex items-center justify-center gap-3 z-10" onClick={(e) => e.stopPropagation()}>
-                      <span className="text-text-primary text-sm font-medium">Delete?</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }}
-                        disabled={deleting}
-                        className="px-3 py-1.5 bg-error/20 text-error border border-error/30 rounded-lg text-xs font-medium hover:bg-error/30 transition-colors"
+              const href = "/meeting/" + m.id + (search ? "?q=" + encodeURIComponent(search) : "");
+
+              if (showDeleteConfirm === m.id) {
+                return (
+                  <Card key={m.id} className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-text-primary">
+                      Delete &ldquo;{m.title || "Untitled Meeting"}&rdquo;?
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        loading={deleting}
+                        onClick={() => handleDelete(m.id)}
                       >
-                        {deleting ? "..." : "Delete"}
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(null); }}
-                        className="px-3 py-1.5 bg-bg-elevated text-text-secondary rounded-lg text-xs font-medium hover:text-text-primary transition-colors"
-                      >
+                        Delete
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(null)}>
                         Cancel
-                      </button>
-                    </div>
-                  )}
+                      </Button>
+                    </span>
+                  </Card>
+                );
+              }
 
-                  <div className="w-1 h-8 rounded-full flex-shrink-0" style={{
-                    background: m.tasks > 0 ? "var(--color-accent-primary)" : "var(--color-border-default)"
-                  }} />
+              return (
+                <Card key={m.id} padded={false} className="group flex items-stretch overflow-hidden">
+                  <span
+                    className="w-1 flex-shrink-0"
+                    style={{
+                      background: m.tasks > 0 ? "var(--color-accent-primary)" : "var(--color-border-default)",
+                    }}
+                    aria-hidden="true"
+                  />
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-[14px] font-medium text-text-primary truncate">
-                        {m.title || "Untitled Meeting"}
-                      </h3>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: `${meta.color}15`, color: meta.color }}>
-                        {meta.label}
-                      </span>
-                    </div>
-                    {m.summary ? (
-                      <p className="text-[11px] text-text-muted mt-0.5 truncate">{m.summary.slice(0, 80)}{m.summary.length > 80 ? "..." : ""}</p>
-                    ) : null}
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[11px] text-text-muted font-mono">
-                        {formatDate(m.date)}
-                      </span>
-                      {m.tasks > 0 && (
-                        <span className="text-[11px] text-text-muted">
-                          {"\u00B7"} {m.tasks} task{m.tasks === 1 ? "" : "s"}
-                          {m.overdueTasks > 0 && <span className="text-warning"> ({m.overdueTasks} overdue)</span>}
-                        </span>
-                      )}
-                      {m.decisions > 0 && (
-                        <span className="text-[11px] text-text-muted">
-                          {"\u00B7"} {m.decisions} decision{m.decisions === 1 ? "" : "s"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(m.id); }}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 text-text-muted hover:text-error hover:bg-error/10 rounded-lg transition-all duration-100"
+                  <Link
+                    href={href}
+                    className="flex-1 min-w-0 flex items-center gap-3 px-4 py-3 hover:bg-bg-elevated/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-primary transition-colors duration-150"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-medium text-text-primary truncate">
+                          {m.title || "Untitled Meeting"}
+                        </h3>
+                        <span
+                          className="text-micro font-medium px-1.5 py-0.5 rounded flex-shrink-0"
+                          style={{ backgroundColor: `${meta.color}15`, color: meta.color }}
+                        >
+                          {meta.label}
+                        </span>
+                      </div>
+                      {m.summary ? (
+                        <p className="text-caption text-text-muted mt-0.5 truncate">
+                          {m.summary.slice(0, 80)}
+                          {m.summary.length > 80 ? "…" : ""}
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <span className="text-caption text-text-muted font-mono">{formatDate(m.date)}</span>
+                        {m.tasks > 0 && (
+                          <span className="text-caption text-text-muted">
+                            {"\u00B7"} {m.tasks} task{m.tasks === 1 ? "" : "s"}
+                            {m.overdueTasks > 0 && <span className="text-warning"> ({m.overdueTasks} overdue)</span>}
+                          </span>
+                        )}
+                        {m.decisions > 0 && (
+                          <span className="text-caption text-text-muted">
+                            {"\u00B7"} {m.decisions} decision{m.decisions === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+
+                  <div className="flex items-center pr-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      iconOnly
+                      aria-label={`Delete ${m.title || "Untitled Meeting"}`}
+                      onClick={() => setShowDeleteConfirm(m.id)}
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-error"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </Card>
               );
             })}
           </div>

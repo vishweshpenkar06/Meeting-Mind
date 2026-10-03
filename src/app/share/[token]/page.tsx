@@ -56,7 +56,7 @@ export default async function SharedMeetingPage({
       <div className="page-container pt-12 pb-24">
         {/* Meeting Header */}
         <div className="mb-8">
-          <h1 className="font-display font-bold text-[28px] text-text-primary" style={{ lineHeight: "1.15" }}>
+          <h1 className="font-display font-bold text-display-sm text-text-primary" style={{ lineHeight: "1.15" }}>
             {meeting.title}
           </h1>
           <p className="text-text-muted text-sm font-mono mt-1">
@@ -74,11 +74,11 @@ export default async function SharedMeetingPage({
           <>
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-primary pl-3">
-                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
+                <span className="text-sm font-semibold uppercase tracking-caps text-text-secondary">
                   Summary
                 </span>
               </div>
-              <p className="text-text-primary text-[15px] leading-[1.7] whitespace-pre-wrap">
+              <p className="text-text-primary text-body leading-[1.7] whitespace-pre-wrap">
                 {meeting.summary}
               </p>
             </div>
@@ -91,7 +91,7 @@ export default async function SharedMeetingPage({
           <>
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4 border-l-2 border-accent-purple pl-3">
-                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
+                <span className="text-sm font-semibold uppercase tracking-caps text-text-secondary">
                   Key Decisions
                 </span>
               </div>
@@ -101,7 +101,7 @@ export default async function SharedMeetingPage({
                   return (
                   <li key={d.id} className="flex items-start gap-3 pl-3">
                     <div className="w-[4px] h-[4px] rounded-sm bg-accent-purple mt-2.5 flex-shrink-0" />
-                    <span className="text-text-primary text-[14px] leading-[1.6]">
+                    <span className="text-text-primary text-sm leading-[1.6]">
                       {text}
                     </span>
                   </li>
@@ -117,7 +117,7 @@ export default async function SharedMeetingPage({
         {actionItems.length > 0 && (
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-4 border-l-2 border-success pl-3">
-              <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">
+              <span className="text-sm font-semibold uppercase tracking-caps text-text-secondary">
                 Action Items
               </span>
             </div>
@@ -148,7 +148,7 @@ export default async function SharedMeetingPage({
                       {item.owner_name}
                     </span>
                     <span
-                      className="flex-1 text-[14px]"
+                      className="flex-1 text-sm"
                       style={{ color: item.is_completed ? "var(--color-text-muted)" : "var(--color-text-primary)" }}
                     >
                       {item.task_description}

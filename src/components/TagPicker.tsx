@@ -142,13 +142,13 @@ export function TagPicker({ meetingId, className }: TagPickerProps) {
           maxLength={40}
           disabled={busy}
           aria-label="New tag name"
-          className="w-28 bg-bg-elevated border border-accent-primary rounded-full px-3 py-1 text-[11px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/20"
+          className="w-28 bg-bg-elevated border border-accent-primary rounded-full px-3 py-1 text-caption text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/20"
         />
       ) : (
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-border-default text-[11px] text-text-muted hover:text-text-secondary hover:border-border-strong transition-colors"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-border-default text-caption text-text-muted hover:text-text-secondary hover:border-border-strong transition-colors"
         >
           <Plus className="w-3 h-3" aria-hidden="true" />
           Add tag
@@ -160,7 +160,7 @@ export function TagPicker({ meetingId, className }: TagPickerProps) {
           value=""
           onChange={(e) => e.target.value && addTag(available.find((t) => t.id === e.target.value)?.name || "")}
           aria-label="Apply an existing tag"
-          className="bg-transparent border border-border-subtle rounded-full px-2 py-1 text-[11px] text-text-muted focus:outline-none focus:border-accent-primary cursor-pointer"
+          className="bg-transparent border border-border-subtle rounded-full px-2 py-1 text-caption text-text-muted focus:outline-none focus:border-accent-primary cursor-pointer"
         >
           <option value="">Existing tags…</option>
           {available.map((tag) => (
@@ -169,7 +169,7 @@ export function TagPicker({ meetingId, className }: TagPickerProps) {
         </select>
       )}
 
-      {error && <span role="alert" className="text-[11px] text-error">{error}</span>}
+      {error && <span role="alert" className="text-caption text-error">{error}</span>}
     </div>
   );
 }

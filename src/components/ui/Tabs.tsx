@@ -44,7 +44,7 @@ export function Tabs({ items, value, onChange, className, children }: TabsProps)
             >
               {item.label}
               {item.count !== undefined && (
-                <span className={cn("ml-2 text-[11px]", selected ? "text-text-secondary" : "text-text-muted")}>
+                <span className={cn("ml-2 text-caption", selected ? "text-text-secondary" : "text-text-muted")}>
                   {item.count}
                 </span>
               )}

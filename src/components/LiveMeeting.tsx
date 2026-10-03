@@ -223,7 +223,7 @@ export default function LiveMeetingPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="font-display font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
+          <h1 className="font-display font-bold text-display text-text-primary" style={{ lineHeight: "1.15" }}>
             Live Recording
           </h1>
           <p className="text-text-secondary text-base mt-1">
@@ -296,7 +296,7 @@ export default function LiveMeetingPage() {
       </div>
 
       {/* Transcript */}
-      <div className="space-y-3 min-h-[300px]">
+      <div className="space-y-3 min-h-75">
         {segments.length === 0 && !isRecording && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-16 h-16 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4">

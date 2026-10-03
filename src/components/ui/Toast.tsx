@@ -86,7 +86,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               key={t.id}
               role="status"
               className={cn(
-                "surface-float pointer-events-auto flex items-start gap-2.5 min-w-[280px] max-w-sm",
+                "surface-float pointer-events-auto flex items-start gap-2.5 min-w-70 max-w-sm",
                 "px-4 py-3 rounded-xl border shadow-[var(--shadow-lg)]",
                 "animate-[toast-in_200ms_cubic-bezier(0.25,0.46,0.45,0.94)]",
                 TONES[t.tone]

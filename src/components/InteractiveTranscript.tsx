@@ -117,7 +117,7 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
               return (
                 <span
                   key={speaker}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full"
+                  className="inline-flex items-center gap-1 text-caption font-medium px-2 py-0.5 rounded-full"
                   style={{ backgroundColor: color.bg, color: color.solid, border: `1px solid ${color.border}` }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color.solid }} />
@@ -137,13 +137,13 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
           </button>
           <button
             onClick={() => setAll(true)}
-            className="text-[11px] text-text-muted hover:text-accent-primary px-2 py-1 rounded transition-colors"
+            className="text-caption text-text-muted hover:text-accent-primary px-2 py-1 rounded transition-colors"
           >
             Expand all
           </button>
           <button
             onClick={() => setAll(false)}
-            className="text-[11px] text-text-muted hover:text-accent-primary px-2 py-1 rounded transition-colors"
+            className="text-caption text-text-muted hover:text-accent-primary px-2 py-1 rounded transition-colors"
           >
             Collapse all
           </button>
@@ -225,13 +225,13 @@ export default function InteractiveTranscript({ segments }: { segments: Transcri
                       className="flex gap-3 py-2 px-3 rounded-lg hover:bg-white/[0.02] transition-colors group/msg"
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="text-text-primary text-[13px] leading-relaxed whitespace-pre-wrap">
+                        <p className="text-text-primary text-meta leading-relaxed whitespace-pre-wrap">
                           {searchQuery ? highlightText(msg.text, searchQuery) : msg.text}
                         </p>
                         {(msg.start_time !== null || msg.end_time !== null) && (
                           <div className="flex items-center gap-1.5 mt-1.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
                             <Clock className="w-3 h-3 text-text-muted" />
-                            <span className="text-[11px] text-text-muted font-mono">
+                            <span className="text-caption text-text-muted font-mono">
                               {msg.start_time !== null ? formatTimestamp(msg.start_time) : "0:00"}
                               {msg.end_time !== null ? ` - ${formatTimestamp(msg.end_time)}` : ""}
                             </span>

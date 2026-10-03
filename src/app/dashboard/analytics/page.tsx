@@ -69,7 +69,7 @@ export default function AnalyticsPage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-display font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
+        <h1 className="font-display font-bold text-display text-text-primary" style={{ lineHeight: "1.15" }}>
           Meeting Analytics
         </h1>
         <p className="text-text-secondary text-base mt-1">

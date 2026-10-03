@@ -325,7 +325,7 @@ export default function NewMeetingPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-1">
         <div>
-          <h1 className="font-display font-bold text-[32px] text-text-primary" style={{ lineHeight: "1.15" }}>
+          <h1 className="font-display font-bold text-display text-text-primary" style={{ lineHeight: "1.15" }}>
             {title ? title : "New Meeting"}
           </h1>
           <p className="text-text-secondary text-base">
@@ -396,7 +396,7 @@ export default function NewMeetingPage() {
           )}
           {briefing.pendingItems.length > 0 && (
             <div className="mb-2">
-              <p className="text-[11px] font-medium text-text-muted mb-1">Pending</p>
+              <p className="text-caption font-medium text-text-muted mb-1">Pending</p>
               <ul className="space-y-0.5">
                 {briefing.pendingItems.map((item, i) => (
                   <li key={i} className="text-xs text-text-secondary">- {item}</li>
@@ -407,7 +407,7 @@ export default function NewMeetingPage() {
           {briefing.suggestedTopics.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {briefing.suggestedTopics.map((topic, i) => (
-                <span key={i} className="text-[11px] bg-bg-elevated text-text-secondary px-2 py-0.5 rounded-full">
+                <span key={i} className="text-caption bg-bg-elevated text-text-secondary px-2 py-0.5 rounded-full">
                   {topic}
                 </span>
               ))}
@@ -526,7 +526,7 @@ export default function NewMeetingPage() {
         >
           <input ref={fileInputRef} type="file" className="hidden" accept={uploadKind === "screen" ? ".mp4,.mov,.webm,.m4v,.mkv,.avi,video/*" : ".mp3,.wav,.m4a,.webm,.ogg,audio/*"} onChange={handleInputChange} />
           <Upload className="w-7 h-7 text-accent-primary mx-auto mb-4" />
-          <p className="text-text-primary font-semibold text-[15px] mb-1">
+          <p className="text-text-primary font-semibold text-body mb-1">
             Drop your {uploadKind === "screen" ? "screen recording video" : "meeting recording"} here
           </p>
           <p className="text-text-muted text-sm mb-4">
@@ -573,7 +573,7 @@ export default function NewMeetingPage() {
           onChange={(e) => setTranscript(e.target.value)}
           rows={10}
           placeholder="Paste your meeting transcript here..."
-          className="w-full bg-bg-surface border border-border-default rounded-lg px-4 py-3 text-text-primary text-[14px] placeholder:text-text-muted resize-none transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/15 leading-relaxed font-mono mb-8"
+          className="w-full bg-bg-surface border border-border-default rounded-lg px-4 py-3 text-text-primary text-sm placeholder:text-text-muted resize-none transition-all duration-200 focus:border-accent-primary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/15 leading-relaxed font-mono mb-8"
           style={{ fontSize: "13px" }}
         />
         </>
@@ -612,7 +612,7 @@ export default function NewMeetingPage() {
       <button
         onClick={handleProcess}
         disabled={!checkValid()}
-        className="w-full flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-primary-hover text-text-inverse text-[14px] font-medium py-3.5 rounded-xl transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-primary-hover text-text-inverse text-sm font-medium py-3.5 rounded-xl transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {isProcessing ? (
           <>

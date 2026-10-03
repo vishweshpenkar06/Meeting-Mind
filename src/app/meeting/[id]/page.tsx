@@ -637,7 +637,7 @@ export default function MeetingPage() {
                 }}
               />
             </div>
-            <p className="text-[11px] text-text-muted mt-1.5">
+            <p className="text-caption text-text-muted mt-1.5">
               {completedCount}/{actionItems.length} completed
             </p>
           </div>
@@ -675,7 +675,7 @@ export default function MeetingPage() {
           {decisions.length > 0 && (
             <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "100ms" }}>
               <div className="flex items-center gap-2 mb-4 border-l-2 border-accent-purple pl-3">
-                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">Key Decisions</span>
+                <span className="text-sm font-semibold uppercase tracking-caps text-text-secondary">Key Decisions</span>
                 <span className="text-xs text-text-muted ml-1">({decisions.length})</span>
               </div>
               <div className="flex flex-col gap-3">
@@ -696,11 +696,11 @@ export default function MeetingPage() {
                         onChange={(e) => setEditingDecisionValue(e.target.value)}
                         onBlur={saveEditDecision}
                         onKeyDown={(e) => { if (e.key === "Enter") saveEditDecision(); if (e.key === "Escape") setEditingDecisionId(null); }}
-                        className="flex-1 text-text-primary text-[14px] leading-[1.65] font-medium bg-bg-surface border border-accent-primary rounded px-2 py-0.5 focus:outline-none"
+                        className="flex-1 text-text-primary text-sm leading-[1.65] font-medium bg-bg-surface border border-accent-primary rounded px-2 py-0.5 focus:outline-none"
                       />
                     ) : (
                       <span
-                        className="text-text-primary text-[14px] leading-[1.65] font-medium cursor-pointer hover:text-accent-primary transition-colors"
+                        className="text-text-primary text-sm leading-[1.65] font-medium cursor-pointer hover:text-accent-primary transition-colors"
                         onClick={() => startEditDecision(d.id, text)}
                       >{text}</span>
                     )}
@@ -716,7 +716,7 @@ export default function MeetingPage() {
           {meeting.keyTopics && meeting.keyTopics.length > 0 && (
             <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "150ms" }}>
               <div className="flex items-center gap-2 mb-3 border-l-2 border-accent-orange pl-3">
-                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">Key Topics</span>
+                <span className="text-sm font-semibold uppercase tracking-caps text-text-secondary">Key Topics</span>
               </div>
               <div className="flex flex-wrap gap-2 pl-3">
                 {meeting.keyTopics.map((topic, i) => (
@@ -731,7 +731,7 @@ export default function MeetingPage() {
           {meeting.risks && meeting.risks.length > 0 && (
             <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "200ms" }}>
               <div className="flex items-center gap-2 mb-4 border-l-2 border-error pl-3">
-                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">Risks & Blockers</span>
+                <span className="text-sm font-semibold uppercase tracking-caps text-text-secondary">Risks & Blockers</span>
               </div>
               <div className="flex flex-col gap-3 pl-3">
                 {meeting.risks.map((r, i) => (
@@ -751,7 +751,7 @@ export default function MeetingPage() {
           {meeting.followUps && meeting.followUps.length > 0 && (
             <div style={{ animation: "fadeInUp 0.3s ease both", animationDelay: "250ms" }}>
               <div className="flex items-center gap-2 mb-4 border-l-2 border-warning pl-3">
-                <span className="text-sm font-semibold uppercase tracking-[0.08em] text-text-secondary">Open Questions</span>
+                <span className="text-sm font-semibold uppercase tracking-caps text-text-secondary">Open Questions</span>
               </div>
               <ul className="flex flex-col gap-2 pl-3">
                 {meeting.followUps.map((item, i) => (
@@ -817,7 +817,7 @@ export default function MeetingPage() {
                     </span>
                   )}
                   {priority && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wider"
+                    <span className="text-micro font-bold px-1.5 py-0.5 rounded flex-shrink-0 uppercase tracking-wider"
                       style={{
                         backgroundColor: priority === "critical" ? "var(--color-error-muted)" : priority === "high" ? "var(--color-warning-muted)" : "var(--color-accent-muted)",
                         color: priority === "critical" ? "var(--color-error)" : priority === "high" ? "var(--color-warning)" : "var(--color-accent-primary)",
@@ -831,12 +831,12 @@ export default function MeetingPage() {
                       onChange={(e) => setEditingItemValue(e.target.value)}
                       onBlur={saveEditItem}
                       onKeyDown={(e) => { if (e.key === "Enter") saveEditItem(); if (e.key === "Escape") setEditingItemId(null); }}
-                      className="flex-1 text-[14px] bg-bg-surface border border-accent-primary text-text-primary rounded px-2 py-0.5 focus:outline-none"
+                      className="flex-1 text-sm bg-bg-surface border border-accent-primary text-text-primary rounded px-2 py-0.5 focus:outline-none"
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
                     <span
-                      className="flex-1 text-[14px] transition-all duration-200 cursor-pointer"
+                      className="flex-1 text-sm transition-all duration-200 cursor-pointer"
                       style={{ color: item.is_completed ? "var(--color-text-muted)" : "var(--color-text-primary)", textDecoration: item.is_completed ? "line-through" : "none" }}
                       onClick={(e) => { e.stopPropagation(); if (!item.is_completed) startEditItem(item.id, "task", item.task_description); }}
                     >{item.task_description}</span>
@@ -908,7 +908,7 @@ export default function MeetingPage() {
                     .map((sentence, i) => (
                       <div key={i} className="flex items-start gap-3">
                         <span className="text-accent-primary text-xs mt-1.5 flex-shrink-0">•</span>
-                        <span className="text-text-secondary text-[13px] leading-relaxed font-mono">
+                        <span className="text-text-secondary text-meta leading-relaxed font-mono">
                           {sentence.trim()}
                         </span>
                       </div>
@@ -1034,7 +1034,7 @@ function SummaryNotes({ summary, highlight }: { summary: string; highlight?: str
         {summary.split("\n").filter(Boolean).map((line, i) => (
           <div key={i} className="flex items-start gap-3 bg-bg-surface border border-border-subtle rounded-xl px-4 py-3">
             <div className="w-1.5 h-1.5 rounded-full bg-accent-primary mt-2 flex-shrink-0" />
-            <p className="text-text-primary text-[14px] leading-[1.65]">
+            <p className="text-text-primary text-sm leading-[1.65]">
               <HighlightText text={line} query={highlight} />
             </p>
           </div>
@@ -1082,7 +1082,7 @@ function SummaryNotes({ summary, highlight }: { summary: string; highlight?: str
                   {section.points.map((point, j) => (
                     <li key={j} className="flex items-start gap-2.5">
                       <span className="text-accent-primary text-xs mt-1">•</span>
-                      <span className="text-text-secondary text-[13px] leading-relaxed">
+                      <span className="text-text-secondary text-meta leading-relaxed">
                         <HighlightText text={point} query={highlight} />
                       </span>
                     </li>
